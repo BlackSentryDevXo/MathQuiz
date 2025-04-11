@@ -1,29 +1,18 @@
 <!DOCTYPE html>
 <html>
-	<head>
-	<style type="text/css">
-		body{
-			background: #000000;
-			padding:0px;
-			margin:0px;
-		}
-	</style>
-	<script src="phaser.min.js"></script>
-	<script src="information-scene.js"></script>
-    <script src = "game.js"></script>
-	</head>
-	<body>
-		<div id="game"></div>
-        <script>
-
-            const phaserConfig = {
-            type: Phaser.AUTO,
-            parent: "game",
-            width: 1280,
-            height: 720,    
-            scene: [InformationScene, MainScene]
-            };
-		</script>
-		
-	</body>
+<head>
+    <style>
+        body {
+            background: #000000;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+    <script src="phaser.js"></script>
+    <script src="phaser.min.js"></script>
+</head>
+<body>
+    <div id="game"></div>
+    <script src="game.js"></script>
+</body>
 </html>
