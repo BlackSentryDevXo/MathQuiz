@@ -36,12 +36,12 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       })
       .setOrigin(0.5, 0.5);
 
-    // Viewport area for rows (TOP-ALIGNED now)
+    // Viewport area for rows (TOP-ALIGNED)
     const listW = this.panel.width - 60;
     const listH = this.panel.height - 140;
     const listTopY = this.panel.y - this.panel.height / 2 + 70; // below title
     this.listContainer = scene.add.container(this.panel.x, listTopY).setSize(listW, listH);
-    // interactive rect from top-left of listContainer
+    // Hit area from top-left of the listContainer
     this.listContainer.setInteractive(
       new Phaser.Geom.Rectangle(-listW / 2, 0, listW, listH),
       Phaser.Geom.Rectangle.Contains
@@ -112,9 +112,17 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.alpha = 0;
     this._isLoading = false;
 
-    // Row style constants
-    this.rowH = 48;
-    this.rowPadX = 12;
+    // ---- Row layout metrics (controls spacing) ----
+    this.metrics = {
+      pillH: 56,          // pixel height of each neon chip
+      rowSpacing: 10,     // vertical space BETWEEN chips
+      padX: 12,           // inner horizontal padding
+      nameX: 74,          // where name starts (after rank)
+      scoreRightPad: 14   // right edge padding for score
+    };
+    this.metrics.step = this.metrics.pillH + this.metrics.rowSpacing;
+
+    // Colors
     this.colors = {
       chipFill: 0x0f2235,
       chipStroke: 0x14e6ff,
@@ -196,51 +204,53 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
   _renderList(snap) {
     this.listContainer.removeAll(true);
 
+    const { pillH, step, padX, nameX, scoreRightPad } = this.metrics;
     const rows = Math.min(snap.size, this.pageSize);
-    const maxVisible = Math.floor(this.listContainer.height / this.rowH);
+
+    // how many full rows fit in the viewport, respecting spacing
+    const maxVisible = Math.max(0, Math.floor(this.listContainer.height / step));
     const shown = Math.min(rows, maxVisible);
-    const startY = this.rowH / 2; // TOP-ALIGNED
+
+    const startY = pillH / 2; // top-aligned: first row center is half pill high from top
 
     for (let i = 0; i < shown; i++) {
       const d = snap.docs[i];
       const data = d.data();
       const rank = this.pageIndex * this.pageSize + i + 1;
 
-      const rowY = startY + i * this.rowH;
+      const rowY = startY + i * step;
 
       // Row container anchored to top-left of the list viewport
       const row = this.scene.add.container(-this.listContainer.width / 2, rowY);
 
-      // Neon pill background (Graphics with rounded rect)
+      // Neon pill background
       const g = this.scene.add.graphics();
       g.lineStyle(2, this.colors.chipStroke, this.colors.chipStrokeAlpha);
       g.fillStyle(this.colors.chipFill, 0.9);
       const pillW = this.listContainer.width;
-      const pillH = this.rowH + 8;
       g.fillRoundedRect(0, -pillH / 2, pillW, pillH, 12);
       g.strokeRoundedRect(0, -pillH / 2, pillW, pillH, 12);
 
       // Rank (left)
-      const rankText = this.scene.add.text(12, 0, `${rank}.`, {
+      const rankText = this.scene.add.text(padX, 0, `${rank}.`, {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-        fontSize: "22px",
+        fontSize: "24px",
         fontStyle: "bold",
         color: this.colors.rank
       }).setOrigin(0, 0.5);
 
       // Name (middle, bigger)
-      const nameX = 70;
       const nameText = this.scene.add.text(nameX, 0, `${data.gamerTag || "Player"}`, {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-        fontSize: "24px",
+        fontSize: "26px",
         fontStyle: "bold",
         color: this.colors.name
       }).setOrigin(0, 0.5);
 
       // Score (right)
-      const scoreText = this.scene.add.text(pillW - 14, 0, `${data.score}`, {
+      const scoreText = this.scene.add.text(pillW - scoreRightPad, 0, `${data.score}`, {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-        fontSize: "24px",
+        fontSize: "26px",
         fontStyle: "bold",
         color: this.colors.score
       }).setOrigin(1, 0.5);
