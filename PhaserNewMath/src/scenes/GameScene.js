@@ -33,6 +33,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create(){
+    this.input.topOnly = true;
+
     // Background + subtle color pops
     this.cameras.main.setBackgroundColor("#0b1320");
     this.add.rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0x0b1320).setOrigin(0).setDepth(-10);
@@ -53,25 +55,36 @@ export default class GameScene extends Phaser.Scene {
 
     // Top-right "Rank"
     this.rankText = this.add.text(BASE_WIDTH - 40, 40, "Rank: —", {
-      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-      fontSize: "28px",
-      fontStyle: "bold",
-      color: "#eaf7ff"
-    }).setOrigin(1, 0).setDepth(10);
-    this.rankText.setInteractive({ useHandCursor: true }).on("pointerup", () => this.lbOverlay?.show());
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+    fontSize: "28px",
+    fontStyle: "bold",
+    color: "#eaf7ff"
+    })
+    .setOrigin(1, 0)
+    .setDepth(350)           // <-- above the start blocker
+    .setScrollFactor(0)      // <-- HUD, not world
+    .setInteractive({ useHandCursor: true });
+
+    this.rankText
+    .on("pointerdown", (p, x, y, e) => e?.stopPropagation())
+    .on("pointerup",   (p, x, y, e) => { e?.stopPropagation(); this.lbOverlay?.show(); });
 
     // Compact "Edit name" pill under Rank (top-right)
-    this.editNameBtn = this.add.text(BASE_WIDTH - 40, 40 + 40, "Edit name", {
+    this.editNameBtn = this.add.text(BASE_WIDTH - 40, 80, "Edit name", {
     fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
     fontSize: "18px",
     color: "#9fd2ff",
     backgroundColor: "rgba(20,230,255,0.10)"
     })
-        .setOrigin(1, 0)
-        .setPadding(8, 4, 8, 4)
-        .setDepth(10)
-        .setInteractive({ useHandCursor: true })
-        .on("pointerup", () => this._editGamerTag());
+    .setOrigin(1, 0)
+    .setPadding(8, 4, 8, 4)
+    .setDepth(350)           // <-- above the start blocker
+    .setScrollFactor(0)
+    .setInteractive({ useHandCursor: true });
+
+    this.editNameBtn
+    .on("pointerdown", (p, x, y, e) => e?.stopPropagation())
+    .on("pointerup",   async (p, x, y, e) => { e?.stopPropagation(); await this._editGamerTag(); });
 
 
     this.questionText = this.add.text(BASE_WIDTH/2, BASE_HEIGHT*0.28, "-", {
@@ -283,7 +296,7 @@ export default class GameScene extends Phaser.Scene {
     this.tweens.add({ targets:prompt, alpha:1, yoyo:true, repeat:-1, duration:700, ease:"Sine.easeInOut" });
 
     const blocker = this.add.zone(0,0,BASE_WIDTH,BASE_HEIGHT).setOrigin(0)
-      .setInteractive({ useHandCursor:true }).setDepth(190);
+      .setInteractive({ useHandCursor:true }).setDepth(100);
 
     blocker.once("pointerdown", async ()=>{
       prompt.destroy(); blocker.disableInteractive();
