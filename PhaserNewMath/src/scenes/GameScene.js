@@ -1,5 +1,5 @@
 import { gameOptions, BASE_WIDTH, BASE_HEIGHT } from "../config.js";
-import { ready, saveBestScore, getMyRank }  from "../services/firebase.js";
+import { ready, saveBestScore, getMyRank, updateGamerTag }  from "../services/firebase.js";
 import LeaderboardOverlay from "../ui/LeaderboardOverlay.js";
 
 export default class GameScene extends Phaser.Scene {
@@ -59,6 +59,20 @@ export default class GameScene extends Phaser.Scene {
       color: "#eaf7ff"
     }).setOrigin(1, 0).setDepth(10);
     this.rankText.setInteractive({ useHandCursor: true }).on("pointerup", () => this.lbOverlay?.show());
+
+    // Compact "Edit name" pill under Rank (top-right)
+    this.editNameBtn = this.add.text(BASE_WIDTH - 40, 40 + 40, "Edit name", {
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+    fontSize: "18px",
+    color: "#9fd2ff",
+    backgroundColor: "rgba(20,230,255,0.10)"
+    })
+        .setOrigin(1, 0)
+        .setPadding(8, 4, 8, 4)
+        .setDepth(10)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this._editGamerTag());
+
 
     this.questionText = this.add.text(BASE_WIDTH/2, BASE_HEIGHT*0.28, "-", {
       fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
@@ -245,7 +259,10 @@ export default class GameScene extends Phaser.Scene {
     localStorage.setItem(gameOptions.localStorageName, newTop.toString());
     this.topScore = newTop;
 
-    if (!this.gamerTag) { await this._askForGamerTag(); }
+    if (!this.gamerTag) { 
+        const firstTag = await this._promptGamerTag({ title: "Choose a Gamer Tag" });
+        this.gamerTag = firstTag; localStorage.setItem("gamerTag", firstTag);
+    }
 
     try { await saveBestScore(this.score, this.gamerTag || "Player"); }
     catch (e) { console.warn("saveBestScore failed", e); }
@@ -323,50 +340,73 @@ export default class GameScene extends Phaser.Scene {
     } catch (e) { /* noop */ }
   }
 
-  // ----- Gamer tag prompt -----
-  _askForGamerTag() {
-    return new Promise((resolve) => {
-      const W = BASE_WIDTH, H = BASE_HEIGHT;
-      const dim = this.add.rectangle(0,0,W,H,0x000000,0.55).setOrigin(0).setDepth(400).setInteractive();
+  async _editGamerTag() {
+        try {
+            const tag = await this._promptGamerTag({
+            title: "Edit Gamer Tag",
+            initial: this.gamerTag || ""
+            });
+            if (!tag) return;
 
-      const panel = this.add.rectangle(W*0.5, H*0.5, Math.min(680, W*0.9), 300, 0x121826, 0.98)
-        .setStrokeStyle(3, 0x14e6ff, 0.4).setDepth(401);
+            // local first
+            this.gamerTag = tag;
+            localStorage.setItem("gamerTag", tag);
 
-      const title = this.add.text(panel.x, panel.y-80, "Choose a Gamer Tag", {
-        fontFamily:"system-ui", fontSize:"32px", color:"#eaf7ff"
-      }).setOrigin(0.5).setDepth(401);
+            // remote (don’t touch updatedAt/score)
+            await updateGamerTag(tag);
 
-      const dom = this.add.dom(panel.x, panel.y-10).createFromHTML(`
-        <input id="gtag" type="text" maxlength="24" placeholder="e.g. KenteKnight"
-          style="padding:12px 16px;border-radius:10px;border:2px solid #14e6ff;
-                 background:#0f1621;color:#eaf7ff;outline:none;width:70%;
-                 font-size:18px;font-family:system-ui;" />
-      `).setDepth(401);
-
-      const el = dom.getChildByID("gtag");
-      setTimeout(()=> { try { el?.focus(); el?.select?.(); } catch {} }, 50);
-
-      panel.setInteractive({ useHandCursor: true }).on("pointerdown", () => el?.focus());
-
-      const btn = this.add.text(panel.x, panel.y+70, "Save", {
-        fontFamily:"system-ui", fontSize:"24px", color:"#eaf7ff", backgroundColor:"#233345"
-      }).setPadding(14,8,14,8).setOrigin(0.5).setDepth(401).setInteractive({ useHandCursor:true });
-
-      const close = () => { dim.destroy(); panel.destroy(); title.destroy(); dom.destroy(); btn.destroy(); };
-
-      btn.on("pointerup", () => {
-        const tag = (el?.value || "").trim();
-        if (tag.length >= 2 && tag.length <= 24) {
-          this.gamerTag = tag;
-          localStorage.setItem("gamerTag", tag);
-          close(); resolve();
-        } else {
-          btn.setText("2–24 chars ✨");
-          this.tweens.add({ targets: btn, y: btn.y-3, yoyo:true, duration:80, repeat:2 });
+            // If leaderboard is open, refresh first page
+            this.lbOverlay?.refreshCurrent?.();
+        } catch (e) {
+            console.warn("updateGamerTag failed", e);
         }
-      });
-    });
-  }
+    }
+
+
+  // ----- Gamer tag prompt -----
+    _promptGamerTag({ title = "Choose a Gamer Tag", initial = "" } = {}) {
+        return new Promise((resolve) => {
+            const W = BASE_WIDTH, H = BASE_HEIGHT;
+            const dim = this.add.rectangle(0,0,W,H,0x000000,0.55).setOrigin(0).setDepth(400).setInteractive();
+
+            const panel = this.add.rectangle(W*0.5, H*0.5, Math.min(680, W*0.9), 300, 0x121826, 0.98)
+            .setStrokeStyle(3, 0x14e6ff, 0.4).setDepth(401);
+
+            const titleTxt = this.add.text(panel.x, panel.y-80, title, {
+            fontFamily:"system-ui", fontSize:"32px", color:"#eaf7ff"
+            }).setOrigin(0.5).setDepth(401);
+
+            const dom = this.add.dom(panel.x, panel.y-10).createFromHTML(`
+            <input id="gtag" type="text" maxlength="24" placeholder="e.g. KenteKnight"
+                style="padding:12px 16px;border-radius:10px;border:2px solid #14e6ff;
+                    background:#0f1621;color:#eaf7ff;outline:none;width:70%;
+                    font-size:18px;font-family:system-ui;" />
+            `).setDepth(401);
+
+            const el = dom.getChildByID("gtag");
+            if (el) { el.value = (initial || ""); }
+            setTimeout(()=> { try { el?.focus(); el?.select?.(); } catch {} }, 50);
+
+            panel.setInteractive({ useHandCursor: true }).on("pointerdown", () => el?.focus());
+
+            const saveBtn = this.add.text(panel.x, panel.y+70, "Save", {
+            fontFamily:"system-ui", fontSize:"24px", color:"#eaf7ff", backgroundColor:"#233345"
+            }).setPadding(14,8,14,8).setOrigin(0.5).setDepth(401).setInteractive({ useHandCursor:true });
+
+            const closeAll = () => { dim.destroy(); panel.destroy(); titleTxt.destroy(); dom.destroy(); saveBtn.destroy(); };
+
+            saveBtn.on("pointerup", () => {
+            const tag = (el?.value || "").trim();
+            if (tag.length >= 2 && tag.length <= 24) {
+                closeAll();
+                resolve(tag);
+            } else {
+                saveBtn.setText("2–24 chars ✨");
+                this.tweens.add({ targets: saveBtn, y: saveBtn.y-3, yoyo:true, duration:80, repeat:2 });
+            }
+            });
+        });
+    }
 
   // ------- UI helpers -------
   updateScoreText(){ this.scoreText.setText(`Score: ${this.score}\nBest: ${this.topScore}`); }

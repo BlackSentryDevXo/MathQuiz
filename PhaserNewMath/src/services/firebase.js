@@ -99,7 +99,20 @@ async function getMyRank() {
   return { rank, score: me.score, gamerTag: me.gamerTag, updatedAt: me.updatedAt, sortKey: me.sortKey };
 }
 
+async function updateGamerTag(newTag) {
+  await ready;
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("Not signed in");
+
+  // Only update the gamerTag field; leave updatedAt/score untouched
+  const ref = doc(db, "leaderboard", uid);
+  const clean = String(newTag).trim().slice(0, 24);
+  if (!clean) return;
+
+  await setDoc(ref, { gamerTag: clean }, { merge: true });
+}
+
 export {
   app, auth, db, ready,
-  loadTop, saveBestScore, getMyLeaderboardDoc, getMyRank
+  updateGamerTag, loadTop, saveBestScore, getMyLeaderboardDoc, getMyRank
 };

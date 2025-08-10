@@ -263,4 +263,9 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.prevBtn.setAlpha(this.pageIndex > 0 ? 1 : 0.35);
     this.nextBtn.setAlpha(snap.size === this.pageSize ? 1 : 0.35);
   }
+
+  refreshCurrent() {
+        // simplest: reload page 1 (fresh snapshot + spacing stays correct)
+        this._loadPage(0, true);
+    }
 }
