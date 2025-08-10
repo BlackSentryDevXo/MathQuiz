@@ -6,7 +6,7 @@ export default class GameScene extends Phaser.Scene {
   constructor(){ super("Game"); }
 
   init(){
-    this.gamePhase = "idle"; // "idle" | "countdown" | "play" | "gameover"
+    this.gamePhase = "idle";
     this.isGameOver = false;
     this.score = 0;
     this.correctAnswers = 0;
@@ -18,7 +18,6 @@ export default class GameScene extends Phaser.Scene {
     }
     this.floatPool = null;
     this._timerWidth = 0;
-    this.currentRunId = null;
     this.gamerTag = localStorage.getItem("gamerTag") || null;
 
     this.colors = {
@@ -27,43 +26,53 @@ export default class GameScene extends Phaser.Scene {
       points: "#39ffb0",
       retry: "#c2ccd9",
       btnGlowTint: 0x7afcff,
-      btnDownTint: 0xff2bd6
+      btnDownTint: 0xff2bd6,
+      neonBar: 0x14e6ff,
+      neonAccent: 0x7afcff
     };
+
+    // one-time splash per page load
+    this._splashShown = !!this.game.registry.get("splashShown");
   }
 
   create(){
-    this.cameras.main.setBackgroundColor("#0f1621");
-    this.add.rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0x0f1621).setOrigin(0).setDepth(-10);
-    this.add.image(0, 0, "vignette").setOrigin(0).setAlpha(0.45).setDepth(50);
+    // Background + subtle color pops
+    this.cameras.main.setBackgroundColor("#0b1320");
+    this.add.rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0x0b1320).setOrigin(0).setDepth(-10);
+    this.add.image(0, 0, "vignette").setOrigin(0).setAlpha(0.35).setDepth(50);
 
+    // faint diagonal scanline for pop
+    const scan = this.add.graphics().setDepth(-5);
+    scan.fillStyle(0x123a63, 0.18);
+    for (let x = -BASE_HEIGHT; x < BASE_WIDTH; x += 32) {
+      scan.fillRect(x, 0, 2, BASE_HEIGHT);
+    }
+
+    // UI
     this.scoreText = this.add.text(40, 40, "", {
       fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
       fontSize:"36px", fontStyle:"bold", color:this.colors.textSoft
     }).setDepth(10);
 
-    // Top-right "My Rank"
-    this.rankText = this.add.text(BASE_WIDTH - 40, 40, "My Rank: —", {
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-    fontSize: "28px",
-    fontStyle: "bold",
-    color: "#eaf7ff"
+    // Top-right "Rank"
+    this.rankText = this.add.text(BASE_WIDTH - 40, 40, "Rank: —", {
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+      fontSize: "28px",
+      fontStyle: "bold",
+      color: "#eaf7ff"
     }).setOrigin(1, 0).setDepth(10);
-
-    // Small, tappable to open the leaderboard
-    this.rankText.setInteractive({ useHandCursor: true }).on("pointerup", () => {
-    this.lbOverlay?.show();
-    });
+    this.rankText.setInteractive({ useHandCursor: true }).on("pointerup", () => this.lbOverlay?.show());
 
     this.questionText = this.add.text(BASE_WIDTH/2, BASE_HEIGHT*0.28, "-", {
       fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
-      fontSize:"96px", fontStyle:"900", color:this.colors.textMain, stroke:"#14e6ff", strokeThickness:2
+      fontSize:"96px", fontStyle:"900", color:this.colors.textMain, stroke:"#14e6ff", strokeThickness:3
     }).setOrigin(0.5).setDepth(10);
 
-    // Timer
-    this.timerBg = this.add.image(BASE_WIDTH/2, BASE_HEIGHT*0.36, "bar-bg").setOrigin(0.5);
-    this.timerFill = this.add.image(this.timerBg.x - this.timerBg.width/2, this.timerBg.y, "bar-fill").setOrigin(0,0.5);
-    this.timerBg.y = BASE_HEIGHT * 0.375;
-    this.timerFill.y = this.timerBg.y;
+    // Timer (brighter bar)
+    this.timerBg = this.add.image(BASE_WIDTH/2, BASE_HEIGHT*0.375, "bar-bg").setOrigin(0.5);
+    this.timerFill = this.add.image(this.timerBg.x - this.timerBg.width/2, this.timerBg.y, "bar-fill")
+      .setOrigin(0,0.5)
+      .setTint(this.colors.neonBar);
 
     // Buttons (zones)
     this.buttons = [];
@@ -73,11 +82,16 @@ export default class GameScene extends Phaser.Scene {
       const btn = this.add.container(BASE_WIDTH/2, y).setDepth(5);
       const bg = this.add.image(0,0,"btn-normal");
       btn.setSize(bg.width, bg.height);
-      const txt = this.add.text(0,0,labels[i],{ fontFamily:"system-ui, -apple-system, Segoe UI, Roboto", fontSize:"64px", fontStyle:"bold", color:this.colors.textMain }).setOrigin(0.5);
+      const txt = this.add.text(0,0,labels[i],{
+        fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
+        fontSize:"64px", fontStyle:"bold", color:this.colors.textMain
+      }).setOrigin(0.5);
+
       const hit = this.add.zone(0,0,640,120).setOrigin(0.5).setInteractive({ useHandCursor:true });
 
       let hoverTween=null;
-      hit.on("pointerover",()=>{ if(this.gamePhase!=="play")return; bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint);
+      hit.on("pointerover",(p)=>{ if(this.gamePhase!=="play")return;
+        bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint);
         hoverTween = this.tweens.add({targets:btn, scale:1.02, duration:140, yoyo:true, repeat:-1, ease:"Sine.easeInOut"}); });
       hit.on("pointerout",()=>{ bg.setTexture("btn-normal").clearTint(); hoverTween?.stop(); hoverTween=null; btn.setScale(1); });
       hit.on("pointerdown",()=>{ if(this.gamePhase!=="play")return; bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
@@ -88,7 +102,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.setButtonsInteractive(false);
 
-    // Particles (single emitter)
+    // Particles
     this.emitter = this.add.particles(0,0,"dot",{
       speed:{min:140,max:260}, angle:{min:-85,max:-95}, gravityY:500, lifespan:600,
       scale:{start:0.9,end:0.1}, quantity:12, emitting:false
@@ -97,47 +111,54 @@ export default class GameScene extends Phaser.Scene {
     // Float pool
     this.floatPool = this.add.group({ classType: Phaser.GameObjects.Text, maxSize: 12, runChildUpdate:false });
 
-    // Leaderboard overlay + BIG neon button (bottom-left)
+    // Leaderboard overlay + COMPACT neon button (bottom-left)
     this.lbOverlay = new LeaderboardOverlay(this);
     {
-        const label = "🏆 Top Scores";
-        const btn = this.add.container(24, BASE_HEIGHT - 24).setDepth(300);
+      const label = "🏆 Leaderboard";
+      const btn = this.add.container(24, BASE_HEIGHT - 24).setDepth(300);
 
-        // reuse runtime button texture and scale it to fit text
-        const bg = this.add.image(0, 0, "btn-normal").setOrigin(0, 1).setScale(0.75);
-        const txt = this.add.text(24, -bg.displayHeight / 2, label, {
-            fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-            fontSize: "26px",
-            fontStyle: "bold",
-            color: "#eaf7ff"
-        }).setOrigin(0, 0.5);
+      // slightly smaller base, fixed max width
+      const baseScale = 0.6;
+      const maxWidth = 220;
 
-        // widen background if text is longer
-        const targetW = txt.width + 48;
-        if (targetW > bg.displayWidth) bg.setScale(targetW / bg.width, bg.scaleY);
+      const bg = this.add.image(0, 0, "btn-normal").setOrigin(0, 1).setScale(baseScale);
+      const txt = this.add.text(20, -bg.displayHeight / 2, label, {
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+        fontSize: "24px",
+        fontStyle: "bold",
+        color: "#eaf7ff"
+      }).setOrigin(0, 0.5);
 
-        // hit zone covers the whole pill
-        const hit = this.add.zone(0, -bg.displayHeight, bg.displayWidth, bg.displayHeight)
-            .setOrigin(0, 0)
-            .setInteractive({ useHandCursor: true });
+      // cap width so it doesn't get too wide
+      const needed = txt.width + 40;
+      const targetW = Math.min(maxWidth, Math.max(needed, bg.displayWidth));
+      bg.setScale(targetW / bg.width, baseScale);
 
-        // neon hover/press
-        hit.on("pointerover", () => bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint));
-        hit.on("pointerout",  () => bg.setTexture("btn-normal").clearTint());
-        hit.on("pointerdown", () => {
-            bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
-            this.tweens.add({ targets: btn, scale: 0.98, duration: 80, yoyo: true });
-        });
-        hit.on("pointerup",   () => this.lbOverlay.show());
+      const hit = this.add.zone(0, -bg.displayHeight, bg.displayWidth, bg.displayHeight)
+        .setOrigin(0, 0)
+        .setInteractive({ useHandCursor: true });
 
-        btn.add([bg, txt, hit]);
+      hit.on("pointerover", () => bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint));
+      hit.on("pointerout",  () => bg.setTexture("btn-normal").clearTint());
+      hit.on("pointerdown", () => {
+        bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
+        this.tweens.add({ targets: btn, scale: 0.98, duration: 80, yoyo: true });
+      });
+      hit.on("pointerup",   () => this.lbOverlay.show());
 
-        // keep pinned to bottom-left after resizes
-        this.scale.on("resize", () => { btn.y = BASE_HEIGHT - 24; });
+      btn.add([bg, txt, hit]);
+      this.scale.on("resize", () => { btn.y = BASE_HEIGHT - 24; });
     }
 
-    // Tap to start
-    this._showTapToStart();
+    // Splash (first load only)
+    if (!this._splashShown) {
+      this._showBootSplash().then(() => {
+        this.game.registry.set("splashShown", true);
+        this._showTapToStart();
+      });
+    } else {
+      this._showTapToStart();
+    }
 
     // Responsive
     this.scale.on("resize", this.onResize, this);
@@ -153,13 +174,6 @@ export default class GameScene extends Phaser.Scene {
       if(sum>0 && sum<4 && currentIndex===limit) this.sumsArray[limit][sum-1].push(output);
       if(currentIndex<limit) this.buildThrees(sum, currentIndex+1, limit, output);
     }
-  }
-
-  // ------- Game loop -------
-  async _startRunOnServer(){
-    await ready; // ensure auth
-    const res = await startRunFn({});
-    this.currentRunId = res.data.runId;
   }
 
   nextNumber(){
@@ -217,27 +231,21 @@ export default class GameScene extends Phaser.Scene {
     localStorage.setItem(gameOptions.localStorageName, newTop.toString());
     this.topScore = newTop;
 
-    // Ensure gamer tag (first time)
     if (!this.gamerTag) { await this._askForGamerTag(); }
 
-    // Save best score to Firestore (quietly ignore errors)
     try {
-    await saveBestScore(this.score, this.gamerTag || "Player");
+      await saveBestScore(this.score, this.gamerTag || "Player");
     } catch (e) {
-    console.warn("saveBestScore failed", e);
+      console.warn("saveBestScore failed", e);
     }
 
-    // Refresh Rank badge
     this.refreshMyRank(true);
-
-        // Back to Tap to start loop
-        this._showTapToStart();
-    }
+    this._showTapToStart();
+  }
 
   // ----- Start/Retry UX -----
   _showTapToStart(){
     this.gamePhase = "idle"; this.setButtonsInteractive(false);
-    // reset visuals
     this.buttons.forEach(b=>{ b.bg.setAlpha(1); b.txt.setAlpha(1); });
     this.questionText.setText("-");
 
@@ -255,7 +263,6 @@ export default class GameScene extends Phaser.Scene {
       blocker.destroy();
     });
 
-    // try to show current rank when idle
     this.refreshMyRank();
   }
 
@@ -267,7 +274,6 @@ export default class GameScene extends Phaser.Scene {
       fontFamily:"system-ui", fontSize:"120px", fontStyle:"900", color:this.colors.textMain, stroke:"#ff2bd6", strokeThickness:3
     }).setOrigin(0.5).setDepth(220).setScale(0.9).setAlpha(0);
 
-    // Ready?
     await new Promise((res)=>{
       this.tweens.add({
         targets: bigText, alpha:1, scale:1.05, duration:240, ease:"Back.Out",
@@ -276,7 +282,6 @@ export default class GameScene extends Phaser.Scene {
       });
     });
 
-    // Go!
     bigText.setText("Go!").setAlpha(0).setScale(0.7);
     await new Promise((res)=>{
       this.tweens.add({
@@ -286,86 +291,99 @@ export default class GameScene extends Phaser.Scene {
       });
     });
 
-    // Cleanup splash
     await new Promise((res)=>{
       this.tweens.add({ targets:bigText, alpha:0, duration:180, ease:"Sine.InOut",
         onComplete:()=>{ dim.destroy(); bigText.destroy(); res(); } });
     });
 
-    // Reset local round + go
     this.isGameOver=false; this.score=0; this.correctAnswers=0;
     this.nextNumber();
   }
 
   async refreshMyRank(force = false) {
-        try {
-            const now = performance.now();
-            if (!force && this._lastRankFetch && (now - this._lastRankFetch) < 8000) return; // 8s throttle
-            this._lastRankFetch = now;
+    try {
+      const now = performance.now();
+      if (!force && this._lastRankFetch && (now - this._lastRankFetch) < 8000) return;
+      this._lastRankFetch = now;
+      await ready;
+      const data = await getMyRank();
+      if (!data) { this.rankText.setText("Rank: —"); return; }
+      this.rankText.setText(`Rank: ${data.rank}`);
+    } catch (e) { /* noop */ }
+  }
 
-            await ready;
-            const data = await getMyRank();
-            if (!data) {
-            this.rankText.setText("Rank: —");
-            return;
-            }
-            this.rankText.setText(`Rank: ${data.rank}`);
-        } catch (e) {
-            // Keep UI stable; try again later
-            // console.warn("Rank fetch failed", e);
+  // ----- Splash (first load only) -----
+  _showBootSplash(){
+    return new Promise((resolve)=>{
+      const dim = this.add.rectangle(0,0,BASE_WIDTH,BASE_HEIGHT,0x000000,0.82).setOrigin(0).setDepth(300);
+      let logoObj;
+      if (this.textures.exists("logo")) {
+        logoObj = this.add.image(BASE_WIDTH/2, BASE_HEIGHT/2, "logo").setDepth(301).setScale(0.6).setAlpha(0);
+      } else {
+        logoObj = this.add.text(BASE_WIDTH/2, BASE_HEIGHT/2, "Your Logo", {
+          fontFamily:"system-ui", fontSize:"48px", fontStyle:"bold", color:"#eaf7ff"
+        }).setOrigin(0.5).setDepth(301).setAlpha(0);
+      }
+
+      this.tweens.add({
+        targets: logoObj, alpha:1, scale: { from: 0.6, to: 0.75 },
+        duration: 450, ease: "Back.Out",
+        onComplete:()=>{
+          this.time.delayedCall(700, ()=>{
+            this.tweens.add({
+              targets:[logoObj, dim], alpha:0, duration:260, ease:"Sine.In",
+              onComplete:()=>{ dim.destroy(); logoObj.destroy(); resolve(); }
+            });
+          });
         }
-    }
-
+      });
+    });
+  }
 
   // ----- Gamer tag prompt -----
-// In GameScene._askForGamerTag()
-    _askForGamerTag() {
+  _askForGamerTag() {
     return new Promise((resolve) => {
-        const W = BASE_WIDTH, H = BASE_HEIGHT;
-        const dim = this.add.rectangle(0,0,W,H,0x000000,0.55).setOrigin(0).setDepth(400).setInteractive();
+      const W = BASE_WIDTH, H = BASE_HEIGHT;
+      const dim = this.add.rectangle(0,0,W,H,0x000000,0.55).setOrigin(0).setDepth(400).setInteractive();
 
-        const panel = this.add.rectangle(W*0.5, H*0.5, Math.min(680, W*0.9), 300, 0x121826, 0.98)
+      const panel = this.add.rectangle(W*0.5, H*0.5, Math.min(680, W*0.9), 300, 0x121826, 0.98)
         .setStrokeStyle(3, 0x14e6ff, 0.4).setDepth(401);
 
-        const title = this.add.text(panel.x, panel.y-80, "Choose a Gamer Tag", {
+      const title = this.add.text(panel.x, panel.y-80, "Choose a Gamer Tag", {
         fontFamily:"system-ui", fontSize:"32px", color:"#eaf7ff"
-        }).setOrigin(0.5).setDepth(401);
+      }).setOrigin(0.5).setDepth(401);
 
-        // Create a DOM input (requires dom.createContainer: true in config)
-        const dom = this.add.dom(panel.x, panel.y-10).createFromHTML(`
+      const dom = this.add.dom(panel.x, panel.y-10).createFromHTML(`
         <input id="gtag" type="text" maxlength="24" placeholder="e.g. KenteKnight"
-            style="padding:12px 16px;border-radius:10px;border:2px solid #14e6ff;
-                background:#0f1621;color:#eaf7ff;outline:none;width:70%;
-                font-size:18px;font-family:system-ui;" />
-        `).setDepth(401);
+          style="padding:12px 16px;border-radius:10px;border:2px solid #14e6ff;
+                 background:#0f1621;color:#eaf7ff;outline:none;width:70%;
+                 font-size:18px;font-family:system-ui;" />
+      `).setDepth(401);
 
-        // Focus the field after it mounts (mobile-friendly)
-        const el = dom.getChildByID("gtag");
-        setTimeout(()=> { try { el?.focus(); el?.select?.(); } catch {} }, 50);
+      const el = dom.getChildByID("gtag");
+      setTimeout(()=> { try { el?.focus(); el?.select?.(); } catch {} }, 50);
 
-        // Allow tapping the panel to focus input (handy on mobile)
-        panel.setInteractive({ useHandCursor: true }).on("pointerdown", () => el?.focus());
+      panel.setInteractive({ useHandCursor: true }).on("pointerdown", () => el?.focus());
 
-        const btn = this.add.text(panel.x, panel.y+70, "Save", {
+      const btn = this.add.text(panel.x, panel.y+70, "Save", {
         fontFamily:"system-ui", fontSize:"24px", color:"#eaf7ff", backgroundColor:"#233345"
-        }).setPadding(14,8,14,8).setOrigin(0.5).setDepth(401).setInteractive({ useHandCursor:true });
+      }).setPadding(14,8,14,8).setOrigin(0.5).setDepth(401).setInteractive({ useHandCursor:true });
 
-        const close = () => { dim.destroy(); panel.destroy(); title.destroy(); dom.destroy(); btn.destroy(); };
+      const close = () => { dim.destroy(); panel.destroy(); title.destroy(); dom.destroy(); btn.destroy(); };
 
-        btn.on("pointerup", () => {
+      btn.on("pointerup", () => {
         const tag = (el?.value || "").trim();
         if (tag.length >= 2 && tag.length <= 24) {
-            this.gamerTag = tag;
-            localStorage.setItem("gamerTag", tag);
-            close(); resolve();
+          this.gamerTag = tag;
+          localStorage.setItem("gamerTag", tag);
+          close(); resolve();
         } else {
-            // quick nudge
-            btn.setText("2–24 chars ✨");
-            this.tweens.add({ targets: btn, y: btn.y-3, yoyo:true, duration:80, repeat:2 });
+          btn.setText("2–24 chars ✨");
+          this.tweens.add({ targets: btn, y: btn.y-3, yoyo:true, duration:80, repeat:2 });
         }
-        });
+      });
     });
-    }
+  }
 
   // ------- UI helpers -------
   updateScoreText(){ this.scoreText.setText(`Score: ${this.score}\nBest: ${this.topScore}`); }

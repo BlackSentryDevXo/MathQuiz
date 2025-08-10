@@ -7,17 +7,19 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.setDepth(500);
     this.setScrollFactor(0);
 
-    // Use camera size for reliability
+    // Remember previous input mode; we force top-most while overlay is visible
+    this._prevTopOnly = scene.input.topOnly;
+
     const cam = scene.cameras.main;
     const W = cam.width;
     const H = cam.height;
 
-    // Dim (capture clicks so game underneath doesn't get them)
+    // Dim
     this.dim = scene.add
       .rectangle(0, 0, W, H, 0x000000, 0.55)
       .setOrigin(0)
       .setInteractive();
-    this.dim.on("pointerdown", (e) => e.stopPropagation());
+    this.dim.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
 
     // Panel
     this.panel = scene.add
@@ -34,15 +36,20 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       })
       .setOrigin(0.5, 0.5);
 
-    // Scrollable list container (rename to avoid clobbering Container.list!)
+    // Scrollable list container (do NOT name this.list; that’s reserved internally)
     this.listContainer = scene.add
       .container(this.panel.x, this.panel.y)
       .setSize(this.panel.width - 60, this.panel.height - 140);
     this.listContainer.setInteractive(
-      new Phaser.Geom.Rectangle(-this.listContainer.width / 2, -this.listContainer.height / 2, this.listContainer.width, this.listContainer.height),
+      new Phaser.Geom.Rectangle(
+        -this.listContainer.width / 2,
+        -this.listContainer.height / 2,
+        this.listContainer.width,
+        this.listContainer.height
+      ),
       Phaser.Geom.Rectangle.Contains
     );
-    this.listContainer.on("pointerdown", (e) => e.stopPropagation());
+    this.listContainer.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
 
     // Close button
     this.closeBtn = scene.add
@@ -54,8 +61,11 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       )
       .setOrigin(1, 0)
       .setInteractive({ useHandCursor: true });
-    this.closeBtn.on("pointerdown", (e) => e.stopPropagation());
-    this.closeBtn.on("pointerup", () => this.hide());
+    this.closeBtn.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
+    this.closeBtn.on("pointerup", (pointer, x, y, event) => {
+      event?.stopPropagation();
+      this.hide();
+    });
 
     // Paging
     this.pageInfo = scene.add
@@ -83,12 +93,12 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
-    this.prevBtn.on("pointerdown", (e) => e.stopPropagation());
-    this.nextBtn.on("pointerdown", (e) => e.stopPropagation());
-    this.prevBtn.on("pointerup", () => this._loadPage(-1));
-    this.nextBtn.on("pointerup", () => this._loadPage(1));
+    this.prevBtn.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
+    this.nextBtn.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
+    this.prevBtn.on("pointerup",   (pointer, x, y, event) => { event?.stopPropagation(); this._loadPage(-1); });
+    this.nextBtn.on("pointerup",   (pointer, x, y, event) => { event?.stopPropagation(); this._loadPage(1);  });
 
-    // Add children one-by-one (avoid the array .add path)
+    // Add children (individually; no arrays)
     this.add(this.dim);
     this.add(this.panel);
     this.add(this.title);
@@ -100,22 +110,24 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
 
     // Paging state
     this.pageSize = 50;
-    this.pages = [];            // cached QuerySnapshots per page
+    this.pages = [];
     this.pageIndex = 0;
-    this.lastDocForPage = [];   // last doc per page for startAfter
+    this.lastDocForPage = [];
 
     this.visible = false;
+    this.alpha = 0;
     this._isLoading = false;
   }
 
   async show() {
     if (this.visible) return;
     this.visible = true;
+    this.scene.input.topOnly = true; // overlay eats input
     this.alpha = 0;
     this.scene.tweens.add({ targets: this, alpha: 1, duration: 180, ease: "Sine.Out" });
 
     if (!this.lastDocForPage[0]) {
-      await this._loadPage(0, true); // first load
+      await this._loadPage(0, true);
     } else {
       this._renderList(this.pages[this.pageIndex]);
     }
@@ -127,7 +139,11 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       alpha: 0,
       duration: 140,
       ease: "Sine.In",
-      onComplete: () => { this.visible = false; },
+      onComplete: () => {
+        this.visible = false;
+        // restore input mode
+        this.scene.input.topOnly = this._prevTopOnly;
+      },
     });
   }
 
@@ -159,7 +175,6 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
         return;
       }
 
-      // fetch next page from last known doc
       const startAfterDoc = this.lastDocForPage[this.pageIndex];
       if (!startAfterDoc) return;
 
