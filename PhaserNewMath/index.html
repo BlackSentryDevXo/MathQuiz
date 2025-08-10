@@ -1,29 +1,20 @@
-<!DOCTYPE html>
-<html>
-	<head>
-	<style type="text/css">
-		body{
-			background: #000000;
-			padding:0px;
-			margin:0px;
-		}
-	</style>
-	<script src="phaser.min.js"></script>
-	<script src="information-scene.js"></script>
-    <script src = "game.js"></script>
-	</head>
-	<body>
-		<div id="game"></div>
-        <script>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>OnePlusTwo — Phaser 3</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <style>
+    html, body { margin:0; padding:0; background:#0b0b0b; height:100%; }
+    #game { width:100%; height:100%; }
+  </style>
+  <!-- Phaser 3 global (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div id="game"></div>
 
-            const phaserConfig = {
-            type: Phaser.AUTO,
-            parent: "game",
-            width: 1280,
-            height: 720,    
-            scene: [InformationScene, MainScene]
-            };
-		</script>
-		
-	</body>
+  <!-- Your game entry (ES modules) -->
+  <script type="module" src="./src/main.js"></script>
+</body>
 </html>
