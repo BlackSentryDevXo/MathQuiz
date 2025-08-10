@@ -12,11 +12,8 @@ const game = new Phaser.Game({
   resolution: Math.min(window.devicePixelRatio || 1, 2),
   scene: [BootScene, GameScene],
   physics: { default: "arcade" },
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    fullscreenTarget: "game"
-  }
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, fullscreenTarget: "game" },
+  dom: { createContainer: true } // ✅ enable DOM elements for <input>
 });
 
 // Optional: hot reload-friendly hook
