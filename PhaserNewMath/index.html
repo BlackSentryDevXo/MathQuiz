@@ -13,7 +13,15 @@
 </head>
 <body>
   <div id="game"></div>
+    <script>
+    // Examples:
+    // window.SPLASH_BG = "#ffffff"; // white splash
+    window.SPLASH_BG = "#000000"; // black (default)
+    // window.SPLASH_BG = "#141a2a"; // custom
 
+    // Provide a logo; if omitted or fails, text fallback is used
+    window.SPLASH_LOGO_URL = "./assets/logo.png";
+    </script>
   <!-- Your game entry (ES modules) -->
   <script type="module" src="./src/main.js"></script>
 </body>

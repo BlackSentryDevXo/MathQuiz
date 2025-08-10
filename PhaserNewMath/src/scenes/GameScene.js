@@ -30,9 +30,6 @@ export default class GameScene extends Phaser.Scene {
       neonBar: 0x14e6ff,
       neonAccent: 0x7afcff
     };
-
-    // one-time splash per page load
-    this._splashShown = !!this.game.registry.get("splashShown");
   }
 
   create(){
@@ -41,7 +38,7 @@ export default class GameScene extends Phaser.Scene {
     this.add.rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0x0b1320).setOrigin(0).setDepth(-10);
     this.add.image(0, 0, "vignette").setOrigin(0).setAlpha(0.35).setDepth(50);
 
-    // faint diagonal scanline for pop
+    // faint diagonal scanline
     const scan = this.add.graphics().setDepth(-5);
     scan.fillStyle(0x123a63, 0.18);
     for (let x = -BASE_HEIGHT; x < BASE_WIDTH; x += 32) {
@@ -77,28 +74,54 @@ export default class GameScene extends Phaser.Scene {
     // Buttons (zones)
     this.buttons = [];
     const labels = ["1","2","3"];
-    for (let i=0;i<3;i++){
-      const y = BASE_HEIGHT*0.52 + i*150;
-      const btn = this.add.container(BASE_WIDTH/2, y).setDepth(5);
-      const bg = this.add.image(0,0,"btn-normal");
-      btn.setSize(bg.width, bg.height);
-      const txt = this.add.text(0,0,labels[i],{
-        fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
-        fontSize:"64px", fontStyle:"bold", color:this.colors.textMain
-      }).setOrigin(0.5);
 
-      const hit = this.add.zone(0,0,640,120).setOrigin(0.5).setInteractive({ useHandCursor:true });
+    for (let i = 0; i < 3; i++) {
+    const y = BASE_HEIGHT * 0.52 + i * 150;
+    const btn = this.add.container(BASE_WIDTH / 2, y).setDepth(5);
 
-      let hoverTween=null;
-      hit.on("pointerover",(p)=>{ if(this.gamePhase!=="play")return;
+    const bg = this.add.image(0, 0, "btn-normal");
+    btn.setSize(bg.width, bg.height);
+
+    const txt = this.add.text(0, 0, labels[i], {
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+        fontSize: "64px",
+        fontStyle: "bold",
+        color: this.colors.textMain
+    }).setOrigin(0.5);
+
+    const hit = this.add.zone(0, 0, 640, 120).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    // keep references
+    btn.bg = bg; btn.txt = txt; btn.index = i; btn.hit = hit; btn.hoverTween = null;
+
+    hit.on("pointerover", () => {
+        if (this.gamePhase !== "play") return;
         bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint);
-        hoverTween = this.tweens.add({targets:btn, scale:1.02, duration:140, yoyo:true, repeat:-1, ease:"Sine.easeInOut"}); });
-      hit.on("pointerout",()=>{ bg.setTexture("btn-normal").clearTint(); hoverTween?.stop(); hoverTween=null; btn.setScale(1); });
-      hit.on("pointerdown",()=>{ if(this.gamePhase!=="play")return; bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
-        this.tweens.add({targets:btn, scale:0.97, duration:80, yoyo:true, ease:"Quad.easeOut"}); this._haptic(15); });
-      hit.on("pointerup",()=>{ if(this.gamePhase!=="play")return; bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint); this.checkAnswer(i); });
+        this._startHover(btn);
+    });
 
-      btn.add([bg,txt,hit]); btn.bg=bg; btn.txt=txt; btn.index=i; btn.hit=hit; this.buttons.push(btn);
+    hit.on("pointerout", () => {
+        bg.setTexture("btn-normal").clearTint();
+        this._stopHover(btn);
+    });
+
+    hit.on("pointerdown", () => {
+        if (this.gamePhase !== "play") return;
+        bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
+        this._stopHover(btn); // ensure pulse stops while pressing
+        this.tweens.add({ targets: btn, scale: 0.97, duration: 80, yoyo: true, ease: "Quad.easeOut" });
+        this._haptic(15);
+    });
+
+    hit.on("pointerup", () => {
+        if (this.gamePhase !== "play") return;
+        bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint);
+        this._stopHover(btn); // kill any lingering hover
+        this.checkAnswer(i);
+    });
+
+    btn.add([bg, txt, hit]);
+    this.buttons.push(btn);
     }
     this.setButtonsInteractive(false);
 
@@ -117,7 +140,6 @@ export default class GameScene extends Phaser.Scene {
       const label = "🏆 Leaderboard";
       const btn = this.add.container(24, BASE_HEIGHT - 24).setDepth(300);
 
-      // slightly smaller base, fixed max width
       const baseScale = 0.6;
       const maxWidth = 220;
 
@@ -129,7 +151,6 @@ export default class GameScene extends Phaser.Scene {
         color: "#eaf7ff"
       }).setOrigin(0, 0.5);
 
-      // cap width so it doesn't get too wide
       const needed = txt.width + 40;
       const targetW = Math.min(maxWidth, Math.max(needed, bg.displayWidth));
       bg.setScale(targetW / bg.width, baseScale);
@@ -150,15 +171,8 @@ export default class GameScene extends Phaser.Scene {
       this.scale.on("resize", () => { btn.y = BASE_HEIGHT - 24; });
     }
 
-    // Splash (first load only)
-    if (!this._splashShown) {
-      this._showBootSplash().then(() => {
-        this.game.registry.set("splashShown", true);
-        this._showTapToStart();
-      });
-    } else {
-      this._showTapToStart();
-    }
+    // Start loop immediately (Splash handles logo)
+    this._showTapToStart();
 
     // Responsive
     this.scale.on("resize", this.onResize, this);
@@ -233,11 +247,8 @@ export default class GameScene extends Phaser.Scene {
 
     if (!this.gamerTag) { await this._askForGamerTag(); }
 
-    try {
-      await saveBestScore(this.score, this.gamerTag || "Player");
-    } catch (e) {
-      console.warn("saveBestScore failed", e);
-    }
+    try { await saveBestScore(this.score, this.gamerTag || "Player"); }
+    catch (e) { console.warn("saveBestScore failed", e); }
 
     this.refreshMyRank(true);
     this._showTapToStart();
@@ -312,34 +323,6 @@ export default class GameScene extends Phaser.Scene {
     } catch (e) { /* noop */ }
   }
 
-  // ----- Splash (first load only) -----
-  _showBootSplash(){
-    return new Promise((resolve)=>{
-      const dim = this.add.rectangle(0,0,BASE_WIDTH,BASE_HEIGHT,0x000000,0.82).setOrigin(0).setDepth(300);
-      let logoObj;
-      if (this.textures.exists("logo")) {
-        logoObj = this.add.image(BASE_WIDTH/2, BASE_HEIGHT/2, "logo").setDepth(301).setScale(0.6).setAlpha(0);
-      } else {
-        logoObj = this.add.text(BASE_WIDTH/2, BASE_HEIGHT/2, "Your Logo", {
-          fontFamily:"system-ui", fontSize:"48px", fontStyle:"bold", color:"#eaf7ff"
-        }).setOrigin(0.5).setDepth(301).setAlpha(0);
-      }
-
-      this.tweens.add({
-        targets: logoObj, alpha:1, scale: { from: 0.6, to: 0.75 },
-        duration: 450, ease: "Back.Out",
-        onComplete:()=>{
-          this.time.delayedCall(700, ()=>{
-            this.tweens.add({
-              targets:[logoObj, dim], alpha:0, duration:260, ease:"Sine.In",
-              onComplete:()=>{ dim.destroy(); logoObj.destroy(); resolve(); }
-            });
-          });
-        }
-      });
-    });
-  }
-
   // ----- Gamer tag prompt -----
   _askForGamerTag() {
     return new Promise((resolve) => {
@@ -397,9 +380,44 @@ export default class GameScene extends Phaser.Scene {
     cam.setScroll(-offsetX, -offsetY);
   }
 
-  setButtonsInteractive(enabled){
-    this.buttons?.forEach(b=>{ if(!b?.hit) return; enabled ? b.hit.setInteractive({useHandCursor:true}) : b.hit.disableInteractive(); });
-  }
+  // ---- Hover tween helpers ----
+    _startHover(btn) {
+    if (btn.hoverTween && btn.hoverTween.isPlaying()) return; // already pulsing
+    // kill any past tweens on this target just in case
+    this.tweens.killTweensOf(btn);
+
+    btn.hoverTween = this.tweens.add({
+        targets: btn,
+        scale: 1.02,
+        duration: 140,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut"
+    });
+    }
+
+    _stopHover(btn) {
+    if (btn.hoverTween) {
+        btn.hoverTween.stop();
+        btn.hoverTween.remove(); // fully detach from TweenManager
+        btn.hoverTween = null;
+    }
+    btn.setScale(1);
+    }
+
+    setButtonsInteractive(enabled) {
+    this.buttons?.forEach((b) => {
+        if (!b?.hit) return;
+        if (!enabled) {
+        // kill hover + reset visuals when disabling
+        this._stopHover(b);
+        b.bg.setTexture("btn-normal").clearTint();
+        b.txt.setAlpha(1);
+        }
+        enabled ? b.hit.setInteractive({ useHandCursor: true }) : b.hit.disableInteractive();
+    });
+    }
+
 
   _getFloatText(x,y,text){
     let t = this.floatPool.getFirstDead();
