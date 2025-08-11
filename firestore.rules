@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /leaderboard/{uid} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+                    && request.auth.uid == uid
+                    && isValidNew(request.resource.data);
+
+      allow update: if request.auth != null
+                    && request.auth.uid == uid
+                    && isValidUpdate(resource.data, request.resource.data);
+    }
+
+    function isValidNew(d) {
+      return d.keys().hasOnly(['uid','gamerTag','score','updatedAt','updatedAtMillis','sortKey'])
+             && d.uid == request.auth.uid
+             && isValidTag(d.gamerTag)
+             && isValidScore(d.score)
+             && isValidMillis(d.updatedAtMillis)
+             && isValidSortKey(d.sortKey);
+    }
+
+    function isValidUpdate(old, d) {
+      return d.keys().hasOnly(['uid','gamerTag','score','updatedAt','updatedAtMillis','sortKey'])
+             && d.uid == request.auth.uid
+             && isValidTag(d.gamerTag)
+             && isValidScore(d.score)
+             && d.score > old.score  // only improve
+             && isValidMillis(d.updatedAtMillis)
+             && isValidSortKey(d.sortKey);
+    }
+
+    function isValidTag(t) {
+      return t is string && t.size() >= 2 && t.size() <= 24;
+    }
+
+    function isValidScore(s) {
+      return s is int && s >= 0 && s <= 500000;
+    }
+
+    function isValidMillis(ms) {
+      return ms is int && ms > 1000000000000; // > ~2001-09-09
+    }
+
+    function isValidSortKey(k) {
+      return k is int && k > 0;
+    }
+  }
+}
+

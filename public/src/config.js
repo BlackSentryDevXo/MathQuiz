@@ -1,8 +1,8 @@
 export const gameOptions = {
   maxSumLen: 5,
   localStorageName: "oneplustwo",
-  timeToAnswer: 3000,   // ms
-  nextLevel: 400
+  timeToAnswer: 3500,   // ms
+  nextLevel: 500
 };
 
 export const BASE_WIDTH = 900;
