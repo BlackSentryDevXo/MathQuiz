@@ -235,11 +235,29 @@ export default class GameScene extends Phaser.Scene {
 
     this.tweens.add({ targets:this.questionText, scale:1.06, duration:130, yoyo:true, ease:"Sine.easeOut" });
 
+    const newTimeToAnswer = this.getCurrentTimeToAnswer(this.score);
     this.timeTween = this.tweens.addCounter({
-      from: fullW, to: 0, duration: gameOptions.timeToAnswer, ease: "Linear",
+      from: fullW, to: 0, duration: newTimeToAnswer, ease: "Linear",
       onUpdate: (tw)=>{ const w=tw.getValue(); this._timerWidth=w; this.timerFill.setCrop(0,0,w,this.timerBg.height); },
       onComplete: ()=>{ if(this.gamePhase==="play") this.gameOver("?"); }
     });
+  }
+
+  getCurrentTimeToAnswer(score) {
+    if (score < gameOptions.nextLevel) {
+      return gameOptions.timeToAnswer;
+    }
+
+    // how many 250ms steps have we earned past the first threshold
+    const steps = Math.floor((score - gameOptions.nextLevel) / gameOptions.nextLevel) + 1;
+    const tempTime = gameOptions.timeToAnswer;
+    // calculate new time
+    const reducedTime = tempTime - (steps * gameOptions.decreaseStep);
+    
+    // ensure it never goes below cappedTimeToAnswer
+    const newTime = Math.max(reducedTime, gameOptions.cappedTimeToAnswer);
+    console.log(newTime)
+    return newTime;
   }
 
   checkAnswer(buttonIndex){
