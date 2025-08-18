@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Math Brain</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <style>
+    html, body { margin:0; padding:0; background:#0b0b0b; height:100%; }
+    #game { width:100%; height:100%; }
+  </style>
+  <!-- Phaser 3 global (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div id="game"></div>
+    <script>
+    // Examples:
+    // window.SPLASH_BG = "#ffffff"; // white splash
+    window.SPLASH_BG = "#000000"; // black (default)
+    // window.SPLASH_BG = "#141a2a"; // custom
+
+    // Provide a logo; if omitted or fails, text fallback is used
+    window.SPLASH_LOGO_URL = "./assets/logo.png";
+    </script>
+  <!-- Your game entry (ES modules) -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

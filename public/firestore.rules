@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Public leaderboard is readable
+    match /leaderboard/{uid} {
+      allow read: if true;
+      allow write: if false; // writes only via Cloud Functions
+    }
+
+    // Runs collection: write only by Cloud Functions; never by clients
+    match /runs/{runId} {
+      allow read: if false;  // no need to read runs from clients
+      allow write: if false; // Functions write only
+    }
+
+    // Everything else locked down
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
