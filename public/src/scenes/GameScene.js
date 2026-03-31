@@ -1,11 +1,11 @@
 import { gameOptions, BASE_WIDTH, BASE_HEIGHT } from "../config.js";
-import { ready, saveBestScore, getMyRank, updateGamerTag }  from "../services/firebase.js";
+import { ready, saveBestScore, getMyRank, updateGamerTag } from "../services/firebase.js";
 import LeaderboardOverlay from "../ui/LeaderboardOverlay.js";
 
 export default class GameScene extends Phaser.Scene {
-  constructor(){ super("Game"); }
+  constructor() { super("Game"); }
 
-  init(){
+  init() {
     this.gamePhase = "idle";
     this.isGameOver = false;
     this.score = 0;
@@ -20,6 +20,10 @@ export default class GameScene extends Phaser.Scene {
     this._timerWidth = 0;
     this.gamerTag = localStorage.getItem("gamerTag") || null;
 
+    // new
+    this.lastBreakScore = 0;
+    this.pendingCountdown = false;
+
     this.colors = {
       textMain: "#eaf7ff",
       textSoft: "#9fd2ff",
@@ -32,7 +36,7 @@ export default class GameScene extends Phaser.Scene {
     };
   }
 
-  create(){
+  create() {
     this.input.topOnly = true;
 
     // Background + subtle color pops
@@ -49,117 +53,117 @@ export default class GameScene extends Phaser.Scene {
 
     // UI
     this.scoreText = this.add.text(40, 40, "", {
-      fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
-      fontSize:"36px", fontStyle:"bold", color:this.colors.textSoft
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+      fontSize: "36px", fontStyle: "bold", color: this.colors.textSoft
     }).setDepth(10);
 
     // Top-right "Rank"
     this.rankText = this.add.text(BASE_WIDTH - 40, 40, "Rank: —", {
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-    fontSize: "28px",
-    fontStyle: "bold",
-    color: "#eaf7ff"
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+      fontSize: "28px",
+      fontStyle: "bold",
+      color: "#eaf7ff"
     })
-    .setOrigin(1, 0)
-    .setDepth(350)           // <-- above the start blocker
-    .setScrollFactor(0)      // <-- HUD, not world
-    .setInteractive({ useHandCursor: true });
+      .setOrigin(1, 0)
+      .setDepth(350)           // <-- above the start blocker
+      .setScrollFactor(0)      // <-- HUD, not world
+      .setInteractive({ useHandCursor: true });
 
     this.rankText
-    .on("pointerdown", (p, x, y, e) => e?.stopPropagation())
-    .on("pointerup",   (p, x, y, e) => { e?.stopPropagation(); this.lbOverlay?.show(); });
+      .on("pointerdown", (p, x, y, e) => e?.stopPropagation())
+      .on("pointerup", (p, x, y, e) => { e?.stopPropagation(); this.lbOverlay?.show(); });
 
     // Compact "Edit name" pill under Rank (top-right)
     this.editNameBtn = this.add.text(BASE_WIDTH - 40, 80, "Edit name", {
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
-    fontSize: "18px",
-    color: "#9fd2ff",
-    backgroundColor: "rgba(20,230,255,0.10)"
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+      fontSize: "18px",
+      color: "#9fd2ff",
+      backgroundColor: "rgba(20,230,255,0.10)"
     })
-    .setOrigin(1, 0)
-    .setPadding(8, 4, 8, 4)
-    .setDepth(350)           // <-- above the start blocker
-    .setScrollFactor(0)
-    .setInteractive({ useHandCursor: true });
+      .setOrigin(1, 0)
+      .setPadding(8, 4, 8, 4)
+      .setDepth(350)           // <-- above the start blocker
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true });
 
     this.editNameBtn
-    .on("pointerdown", (p, x, y, e) => e?.stopPropagation())
-    .on("pointerup",   async (p, x, y, e) => { e?.stopPropagation(); await this._editGamerTag(); });
+      .on("pointerdown", (p, x, y, e) => e?.stopPropagation())
+      .on("pointerup", async (p, x, y, e) => { e?.stopPropagation(); await this._editGamerTag(); });
 
 
-    this.questionText = this.add.text(BASE_WIDTH/2, BASE_HEIGHT*0.28, "-", {
-      fontFamily:"system-ui, -apple-system, Segoe UI, Roboto",
-      fontSize:"96px", fontStyle:"900", color:this.colors.textMain, stroke:"#14e6ff", strokeThickness:3
+    this.questionText = this.add.text(BASE_WIDTH / 2, BASE_HEIGHT * 0.28, "-", {
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
+      fontSize: "96px", fontStyle: "900", color: this.colors.textMain, stroke: "#14e6ff", strokeThickness: 3
     }).setOrigin(0.5).setDepth(10);
 
     // Timer (brighter bar)
-    this.timerBg = this.add.image(BASE_WIDTH/2, BASE_HEIGHT*0.375, "bar-bg").setOrigin(0.5);
-    this.timerFill = this.add.image(this.timerBg.x - this.timerBg.width/2, this.timerBg.y, "bar-fill")
-      .setOrigin(0,0.5)
+    this.timerBg = this.add.image(BASE_WIDTH / 2, BASE_HEIGHT * 0.375, "bar-bg").setOrigin(0.5);
+    this.timerFill = this.add.image(this.timerBg.x - this.timerBg.width / 2, this.timerBg.y, "bar-fill")
+      .setOrigin(0, 0.5)
       .setTint(this.colors.neonBar);
 
     // Buttons (zones)
     this.buttons = [];
-    const labels = ["1","2","3"];
+    const labels = ["1", "2", "3"];
 
     for (let i = 0; i < 3; i++) {
-    const y = BASE_HEIGHT * 0.52 + i * 150;
-    const btn = this.add.container(BASE_WIDTH / 2, y).setDepth(5);
+      const y = BASE_HEIGHT * 0.52 + i * 150;
+      const btn = this.add.container(BASE_WIDTH / 2, y).setDepth(5);
 
-    const bg = this.add.image(0, 0, "btn-normal");
-    btn.setSize(bg.width, bg.height);
+      const bg = this.add.image(0, 0, "btn-normal");
+      btn.setSize(bg.width, bg.height);
 
-    const txt = this.add.text(0, 0, labels[i], {
+      const txt = this.add.text(0, 0, labels[i], {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
         fontSize: "64px",
         fontStyle: "bold",
         color: this.colors.textMain
-    }).setOrigin(0.5);
+      }).setOrigin(0.5);
 
-    const hit = this.add.zone(0, 0, 640, 120).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      const hit = this.add.zone(0, 0, 640, 120).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-    // keep references
-    btn.bg = bg; btn.txt = txt; btn.index = i; btn.hit = hit; btn.hoverTween = null;
+      // keep references
+      btn.bg = bg; btn.txt = txt; btn.index = i; btn.hit = hit; btn.hoverTween = null;
 
-    hit.on("pointerover", () => {
+      hit.on("pointerover", () => {
         if (this.gamePhase !== "play") return;
         bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint);
         this._startHover(btn);
-    });
+      });
 
-    hit.on("pointerout", () => {
+      hit.on("pointerout", () => {
         bg.setTexture("btn-normal").clearTint();
         this._stopHover(btn);
-    });
+      });
 
-    hit.on("pointerdown", () => {
+      hit.on("pointerdown", () => {
         if (this.gamePhase !== "play") return;
         bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
         this._stopHover(btn); // ensure pulse stops while pressing
         this.tweens.add({ targets: btn, scale: 0.97, duration: 80, yoyo: true, ease: "Quad.easeOut" });
         this._haptic(15);
-    });
+      });
 
-    hit.on("pointerup", () => {
+      hit.on("pointerup", () => {
         if (this.gamePhase !== "play") return;
         bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint);
         this._stopHover(btn); // kill any lingering hover
         this.checkAnswer(i);
-    });
+      });
 
-    btn.add([bg, txt, hit]);
-    this.buttons.push(btn);
+      btn.add([bg, txt, hit]);
+      this.buttons.push(btn);
     }
     this.setButtonsInteractive(false);
 
     // Particles
-    this.emitter = this.add.particles(0,0,"dot",{
-      speed:{min:140,max:260}, angle:{min:-85,max:-95}, gravityY:500, lifespan:600,
-      scale:{start:0.9,end:0.1}, quantity:12, emitting:false
+    this.emitter = this.add.particles(0, 0, "dot", {
+      speed: { min: 140, max: 260 }, angle: { min: -85, max: -95 }, gravityY: 500, lifespan: 600,
+      scale: { start: 0.9, end: 0.1 }, quantity: 12, emitting: false
     });
 
     // Float pool
-    this.floatPool = this.add.group({ classType: Phaser.GameObjects.Text, maxSize: 12, runChildUpdate:false });
+    this.floatPool = this.add.group({ classType: Phaser.GameObjects.Text, maxSize: 12, runChildUpdate: false });
 
     // Leaderboard overlay + COMPACT neon button (bottom-left)
     this.lbOverlay = new LeaderboardOverlay(this);
@@ -187,12 +191,12 @@ export default class GameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       hit.on("pointerover", () => bg.setTexture("btn-hover").setTint(this.colors.btnGlowTint));
-      hit.on("pointerout",  () => bg.setTexture("btn-normal").clearTint());
+      hit.on("pointerout", () => bg.setTexture("btn-normal").clearTint());
       hit.on("pointerdown", () => {
         bg.setTexture("btn-down").setTint(this.colors.btnDownTint);
         this.tweens.add({ targets: btn, scale: 0.98, duration: 80, yoyo: true });
       });
-      hit.on("pointerup",   () => this.lbOverlay.show());
+      hit.on("pointerup", () => this.lbOverlay.show());
 
       btn.add([bg, txt, hit]);
       this.scale.on("resize", () => { btn.y = BASE_HEIGHT - 24; });
@@ -203,84 +207,134 @@ export default class GameScene extends Phaser.Scene {
 
     // Responsive
     this.scale.on("resize", this.onResize, this);
-    this.onResize({ width:this.scale.width, height:this.scale.height });
+    this.onResize({ width: this.scale.width, height: this.scale.height });
   }
 
   // ------- Core generator -------
-  buildThrees(initialNumber, currentIndex, limit, currentString){
-    const numbersArray = [-3,-2,-1,1,2,3];
-    for(let i=0;i<numbersArray.length;i++){
-      const delta=numbersArray[i]; const sum=initialNumber+delta;
-      const output=currentString + (delta<0?"":"+") + delta;
-      if(sum>0 && sum<4 && currentIndex===limit) this.sumsArray[limit][sum-1].push(output);
-      if(currentIndex<limit) this.buildThrees(sum, currentIndex+1, limit, output);
+  buildThrees(initialNumber, currentIndex, limit, currentString) {
+    const numbersArray = [-3, -2, -1, 1, 2, 3];
+    for (let i = 0; i < numbersArray.length; i++) {
+      const delta = numbersArray[i]; const sum = initialNumber + delta;
+      const output = currentString + (delta < 0 ? "" : "+") + delta;
+      if (sum > 0 && sum < 4 && currentIndex === limit) this.sumsArray[limit][sum - 1].push(output);
+      if (currentIndex < limit) this.buildThrees(sum, currentIndex + 1, limit, output);
     }
   }
 
-  nextNumber(){
+  nextNumber() {
+    const questionLength = this.getQuestionLength(this.score);
+
     this.gamePhase = "play";
     this.setButtonsInteractive(true);
     this.updateScoreText();
 
-    if(this.timeTween) this.timeTween.stop();
+    if (this.timeTween) this.timeTween.stop();
+
     const fullW = this.timerBg.width;
     this._timerWidth = fullW;
-    this.timerFill.setCrop(0,0,fullW,this.timerBg.height);
+    this.timerFill.setCrop(0, 0, fullW, this.timerBg.height);
 
-    const questionLength = Math.min(Math.floor(this.score / gameOptions.nextLevel)+1, 4);
-    this.randomSum = Phaser.Math.Between(0,2);
-    const bucket = this.sumsArray[questionLength][this.randomSum];
-    const qText = bucket[Phaser.Math.Between(0, bucket.length-1)];
+    this.randomSum = Phaser.Math.Between(0, 2);
+    const bucket = this.sumsArray[questionLength]?.[this.randomSum] || [];
+
+    if (!bucket.length) {
+      console.error("No equations found for questionLength:", questionLength, "answer:", this.randomSum + 1);
+      return;
+    }
+
+    const qText = bucket[Phaser.Math.Between(0, bucket.length - 1)];
     this.questionText.setText(qText);
 
-    this.tweens.add({ targets:this.questionText, scale:1.06, duration:130, yoyo:true, ease:"Sine.easeOut" });
+    this.tweens.add({
+      targets: this.questionText,
+      scale: 1.06,
+      duration: 130,
+      yoyo: true,
+      ease: "Sine.easeOut"
+    });
 
-    const newTimeToAnswer = this.getCurrentTimeToAnswer(this.score);
+    const newTimeToAnswer = this.getCurrentTimeToAnswer(this.score, questionLength);
     this.timeTween = this.tweens.addCounter({
-      from: fullW, to: 0, duration: newTimeToAnswer, ease: "Linear",
-      onUpdate: (tw)=>{ const w=tw.getValue(); this._timerWidth=w; this.timerFill.setCrop(0,0,w,this.timerBg.height); },
-      onComplete: ()=>{ if(this.gamePhase==="play") this.gameOver("?"); }
+      from: fullW,
+      to: 0,
+      duration: newTimeToAnswer,
+      ease: "Linear",
+      onUpdate: (tw) => {
+        const w = tw.getValue();
+        this._timerWidth = w;
+        this.timerFill.setCrop(0, 0, w, this.timerBg.height);
+      },
+      onComplete: () => {
+        if (this.gamePhase === "play") this.gameOver("?");
+      }
     });
   }
 
-  getCurrentTimeToAnswer(score) {
+  getCurrentTimeToAnswer(score, questionLength = this.getQuestionLength(score)) {
     if (score < gameOptions.nextLevel) {
-      return gameOptions.timeToAnswer;
+      let baseTime = gameOptions.timeToAnswer;
+      if (questionLength === 4 && gameOptions.addExtraSecondOnFourNumbers) {
+        baseTime += 1000;
+      }
+      return baseTime;
     }
 
-    // how many 250ms steps have we earned past the first threshold
     const steps = Math.floor((score - gameOptions.nextLevel) / gameOptions.nextLevel) + 1;
-    const tempTime = gameOptions.timeToAnswer;
-    // calculate new time
-    const reducedTime = tempTime - (steps * gameOptions.decreaseStep);
-    
-    // ensure it never goes below cappedTimeToAnswer
-    const newTime = Math.max(reducedTime, gameOptions.cappedTimeToAnswer);
-    console.log(newTime)
+    const reducedTime = gameOptions.timeToAnswer - (steps * gameOptions.decreaseStep);
+
+    let newTime = Math.max(reducedTime, gameOptions.cappedTimeToAnswer);
+
+    if (questionLength === 4 && gameOptions.addExtraSecondOnFourNumbers) {
+      newTime += 1000;
+    }
+
+    console.log(newTime);
     return newTime;
   }
 
-  checkAnswer(buttonIndex){
-    if (this.gamePhase!=="play") return;
-    if (buttonIndex===this.randomSum){
+  checkAnswer(buttonIndex) {
+    if (this.gamePhase !== "play") return;
+
+    if (buttonIndex === this.randomSum) {
+      const prevScore = this.score;
       const points = Math.max(1, Math.floor(this._timerWidth / 4));
-      this.score += points; this.correctAnswers++;
+      this.score += points;
+      this.correctAnswers++;
+
       const btn = this.buttons[buttonIndex];
-      this.emitter.explode(18, btn.x, btn.y-20);
-      const floating = this._getFloatText(btn.x, btn.y-70, `+${points}`);
-      this.tweens.add({ targets:floating, y:floating.y-60, alpha:0, duration:550, ease:"Cubic.easeOut",
-        onComplete:()=> this._recycleFloatText(floating) });
-      this.cameras.main.shake(60, 0.002); this._haptic(25);
+      this.emitter.explode(18, btn.x, btn.y - 20);
+
+      const floating = this._getFloatText(btn.x, btn.y - 70, `+${points}`);
+      this.tweens.add({
+        targets: floating,
+        y: floating.y - 60,
+        alpha: 0,
+        duration: 550,
+        ease: "Cubic.easeOut",
+        onComplete: () => this._recycleFloatText(floating)
+      });
+
+      this.cameras.main.shake(60, 0.002);
+      this._haptic(25);
+
+      this.updateScoreText();
+
+      if (this.shouldTriggerBreak(prevScore, this.score) && !this.pendingCountdown) {
+        this.pendingCountdown = true;
+        this.showMilestoneCountdown();
+        return;
+      }
+
       this.nextNumber();
     } else {
-      if(this.timeTween) this.timeTween.stop();
-      this.gameOver((buttonIndex+1).toString());
+      if (this.timeTween) this.timeTween.stop();
+      this.gameOver((buttonIndex + 1).toString());
     }
   }
 
-  async gameOver(str){
+  async gameOver(str) {
     this.gamePhase = "gameover"; this.isGameOver = true; this.setButtonsInteractive(false);
-    this.buttons.forEach(b=>{ b.bg.setTexture("btn-normal").clearTint().setAlpha(0.6); b.txt.setAlpha(0.6); });
+    this.buttons.forEach(b => { b.bg.setTexture("btn-normal").clearTint().setAlpha(0.6); b.txt.setAlpha(0.6); });
 
     this.questionText.setText(this.questionText.text + " = " + str);
     this.cameras.main.flash(100, 255, 30, 30);
@@ -290,9 +344,9 @@ export default class GameScene extends Phaser.Scene {
     localStorage.setItem(gameOptions.localStorageName, newTop.toString());
     this.topScore = newTop;
 
-    if (!this.gamerTag) { 
-        const firstTag = await this._promptGamerTag({ title: "Choose a Gamer Tag" });
-        this.gamerTag = firstTag; localStorage.setItem("gamerTag", firstTag);
+    if (!this.gamerTag) {
+      const firstTag = await this._promptGamerTag({ title: "Choose a Gamer Tag" });
+      this.gamerTag = firstTag; localStorage.setItem("gamerTag", firstTag);
     }
 
     try { await saveBestScore(this.score, this.gamerTag || "Player"); }
@@ -303,20 +357,20 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // ----- Start/Retry UX -----
-  _showTapToStart(){
+  _showTapToStart() {
     this.gamePhase = "idle"; this.setButtonsInteractive(false);
-    this.buttons.forEach(b=>{ b.bg.setAlpha(1); b.txt.setAlpha(1); });
+    this.buttons.forEach(b => { b.bg.setAlpha(1); b.txt.setAlpha(1); });
     this.questionText.setText("-");
 
-    const prompt = this.add.text(BASE_WIDTH/2, BASE_HEIGHT*0.88, "Tap to start", {
-      fontFamily:"system-ui", fontSize:"38px", color:this.colors.retry
+    const prompt = this.add.text(BASE_WIDTH / 2, BASE_HEIGHT * 0.88, "Tap to start", {
+      fontFamily: "system-ui", fontSize: "38px", color: this.colors.retry
     }).setOrigin(0.5).setAlpha(0).setDepth(200);
-    this.tweens.add({ targets:prompt, alpha:1, yoyo:true, repeat:-1, duration:700, ease:"Sine.easeInOut" });
+    this.tweens.add({ targets: prompt, alpha: 1, yoyo: true, repeat: -1, duration: 700, ease: "Sine.easeInOut" });
 
-    const blocker = this.add.zone(0,0,BASE_WIDTH,BASE_HEIGHT).setOrigin(0)
-      .setInteractive({ useHandCursor:true }).setDepth(100);
+    const blocker = this.add.zone(0, 0, BASE_WIDTH, BASE_HEIGHT).setOrigin(0)
+      .setInteractive({ useHandCursor: true }).setDepth(100);
 
-    blocker.once("pointerdown", async ()=>{
+    blocker.once("pointerdown", async () => {
       prompt.destroy(); blocker.disableInteractive();
       await this._beginReadyGo();
       blocker.destroy();
@@ -325,37 +379,67 @@ export default class GameScene extends Phaser.Scene {
     this.refreshMyRank();
   }
 
-  async _beginReadyGo(){
+  async _beginReadyGo() {
     this.gamePhase = "countdown";
 
-    const dim = this.add.rectangle(0,0,BASE_WIDTH,BASE_HEIGHT,0x000000,0.55).setOrigin(0).setDepth(210);
-    const bigText = this.add.text(BASE_WIDTH/2, BASE_HEIGHT*0.45, "Ready?", {
-      fontFamily:"system-ui", fontSize:"120px", fontStyle:"900", color:this.colors.textMain, stroke:"#ff2bd6", strokeThickness:3
+    const dim = this.add.rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0x000000, 0.55)
+      .setOrigin(0)
+      .setDepth(210);
+
+    const bigText = this.add.text(BASE_WIDTH / 2, BASE_HEIGHT * 0.45, "Ready?", {
+      fontFamily: "system-ui",
+      fontSize: "120px",
+      fontStyle: "900",
+      color: this.colors.textMain,
+      stroke: "#ff2bd6",
+      strokeThickness: 3
     }).setOrigin(0.5).setDepth(220).setScale(0.9).setAlpha(0);
 
-    await new Promise((res)=>{
+    await new Promise((res) => {
       this.tweens.add({
-        targets: bigText, alpha:1, scale:1.05, duration:240, ease:"Back.Out",
-        onStart:()=> this._haptic(20),
-        onComplete:()=> setTimeout(res, 450)
+        targets: bigText,
+        alpha: 1,
+        scale: 1.05,
+        duration: 240,
+        ease: "Back.Out",
+        onStart: () => this._haptic(20),
+        onComplete: () => setTimeout(res, 450)
       });
     });
 
     bigText.setText("Go!").setAlpha(0).setScale(0.7);
-    await new Promise((res)=>{
+
+    await new Promise((res) => {
       this.tweens.add({
-        targets: bigText, alpha:1, scale:1.15, duration:180, ease:"Back.Out",
-        onStart:()=> this._haptic(25),
-        onComplete:()=> setTimeout(res, 250)
+        targets: bigText, // fixed
+        alpha: 1,
+        scale: 1.15,
+        duration: 180,
+        ease: "Back.Out",
+        onStart: () => this._haptic(25),
+        onComplete: () => setTimeout(res, 250)
       });
     });
 
-    await new Promise((res)=>{
-      this.tweens.add({ targets:bigText, alpha:0, duration:180, ease:"Sine.InOut",
-        onComplete:()=>{ dim.destroy(); bigText.destroy(); res(); } });
+    await new Promise((res) => {
+      this.tweens.add({
+        targets: bigText,
+        alpha: 0,
+        duration: 180,
+        ease: "Sine.InOut",
+        onComplete: () => {
+          dim.destroy();
+          bigText.destroy();
+          res();
+        }
+      });
     });
 
-    this.isGameOver=false; this.score=0; this.correctAnswers=0;
+    this.isGameOver = false;
+    this.score = 0;
+    this.correctAnswers = 0;
+    this.lastBreakScore = 0;
+    this.pendingCountdown = false;
     this.nextNumber();
   }
 
@@ -372,135 +456,229 @@ export default class GameScene extends Phaser.Scene {
   }
 
   async _editGamerTag() {
-        try {
-            const tag = await this._promptGamerTag({
-            title: "Edit Gamer Tag",
-            initial: this.gamerTag || ""
-            });
-            if (!tag) return;
+    try {
+      const tag = await this._promptGamerTag({
+        title: "Edit Gamer Tag",
+        initial: this.gamerTag || ""
+      });
+      if (!tag) return;
 
-            // local first
-            this.gamerTag = tag;
-            localStorage.setItem("gamerTag", tag);
+      // local first
+      this.gamerTag = tag;
+      localStorage.setItem("gamerTag", tag);
 
-            // remote (don’t touch updatedAt/score)
-            await updateGamerTag(tag);
+      // remote (don’t touch updatedAt/score)
+      await updateGamerTag(tag);
 
-            // If leaderboard is open, refresh first page
-            this.lbOverlay?.refreshCurrent?.();
-        } catch (e) {
-            console.warn("updateGamerTag failed", e);
-        }
+      // If leaderboard is open, refresh first page
+      this.lbOverlay?.refreshCurrent?.();
+    } catch (e) {
+      console.warn("updateGamerTag failed", e);
     }
+  }
 
 
   // ----- Gamer tag prompt -----
-    _promptGamerTag({ title = "Choose a Gamer Tag", initial = "" } = {}) {
-        return new Promise((resolve) => {
-            const W = BASE_WIDTH, H = BASE_HEIGHT;
-            const dim = this.add.rectangle(0,0,W,H,0x000000,0.55).setOrigin(0).setDepth(400).setInteractive();
+  _promptGamerTag({ title = "Choose a Gamer Tag", initial = "" } = {}) {
+    return new Promise((resolve) => {
+      const W = BASE_WIDTH, H = BASE_HEIGHT;
+      const dim = this.add.rectangle(0, 0, W, H, 0x000000, 0.55).setOrigin(0).setDepth(400).setInteractive();
 
-            const panel = this.add.rectangle(W*0.5, H*0.5, Math.min(680, W*0.9), 300, 0x121826, 0.98)
-            .setStrokeStyle(3, 0x14e6ff, 0.4).setDepth(401);
+      const panel = this.add.rectangle(W * 0.5, H * 0.5, Math.min(680, W * 0.9), 300, 0x121826, 0.98)
+        .setStrokeStyle(3, 0x14e6ff, 0.4).setDepth(401);
 
-            const titleTxt = this.add.text(panel.x, panel.y-80, title, {
-            fontFamily:"system-ui", fontSize:"32px", color:"#eaf7ff"
-            }).setOrigin(0.5).setDepth(401);
+      const titleTxt = this.add.text(panel.x, panel.y - 80, title, {
+        fontFamily: "system-ui", fontSize: "32px", color: "#eaf7ff"
+      }).setOrigin(0.5).setDepth(401);
 
-            const dom = this.add.dom(panel.x, panel.y-10).createFromHTML(`
+      const dom = this.add.dom(panel.x, panel.y - 10).createFromHTML(`
             <input id="gtag" type="text" maxlength="24" placeholder="e.g. KenteKnight"
                 style="padding:12px 16px;border-radius:10px;border:2px solid #14e6ff;
                     background:#0f1621;color:#eaf7ff;outline:none;width:70%;
                     font-size:18px;font-family:system-ui;" />
             `).setDepth(401);
 
-            const el = dom.getChildByID("gtag");
-            if (el) { el.value = (initial || ""); }
-            setTimeout(()=> { try { el?.focus(); el?.select?.(); } catch {} }, 50);
+      const el = dom.getChildByID("gtag");
+      if (el) { el.value = (initial || ""); }
+      setTimeout(() => { try { el?.focus(); el?.select?.(); } catch { } }, 50);
 
-            panel.setInteractive({ useHandCursor: true }).on("pointerdown", () => el?.focus());
+      panel.setInteractive({ useHandCursor: true }).on("pointerdown", () => el?.focus());
 
-            const saveBtn = this.add.text(panel.x, panel.y+70, "Save", {
-            fontFamily:"system-ui", fontSize:"24px", color:"#eaf7ff", backgroundColor:"#233345"
-            }).setPadding(14,8,14,8).setOrigin(0.5).setDepth(401).setInteractive({ useHandCursor:true });
+      const saveBtn = this.add.text(panel.x, panel.y + 70, "Save", {
+        fontFamily: "system-ui", fontSize: "24px", color: "#eaf7ff", backgroundColor: "#233345"
+      }).setPadding(14, 8, 14, 8).setOrigin(0.5).setDepth(401).setInteractive({ useHandCursor: true });
 
-            const closeAll = () => { dim.destroy(); panel.destroy(); titleTxt.destroy(); dom.destroy(); saveBtn.destroy(); };
+      const closeAll = () => { dim.destroy(); panel.destroy(); titleTxt.destroy(); dom.destroy(); saveBtn.destroy(); };
 
-            saveBtn.on("pointerup", () => {
-            const tag = (el?.value || "").trim();
-            if (tag.length >= 2 && tag.length <= 24) {
-                closeAll();
-                resolve(tag);
-            } else {
-                saveBtn.setText("2–24 chars ✨");
-                this.tweens.add({ targets: saveBtn, y: saveBtn.y-3, yoyo:true, duration:80, repeat:2 });
-            }
-            });
-        });
+      saveBtn.on("pointerup", () => {
+        const tag = (el?.value || "").trim();
+        if (tag.length >= 2 && tag.length <= 24) {
+          closeAll();
+          resolve(tag);
+        } else {
+          saveBtn.setText("2–24 chars ✨");
+          this.tweens.add({ targets: saveBtn, y: saveBtn.y - 3, yoyo: true, duration: 80, repeat: 2 });
+        }
+      });
+    });
+  }
+
+  async showMilestoneCountdown() {
+    this.gamePhase = "break";
+    this.setButtonsInteractive(false);
+
+    this.tweens.add({
+      targets: this.questionText,
+      alpha: 0,
+      duration: 150,
+      onComplete: () => {
+        this.questionText.setText("-");
+        this.questionText.setAlpha(1);
+      }
+    });
+
+    if (this.timeTween) {
+      this.timeTween.stop();
+      this.timeTween = null;
     }
 
-  // ------- UI helpers -------
-  updateScoreText(){ this.scoreText.setText(`Score: ${this.score}\nBest: ${this.topScore}`); }
+    const dim = this.add.rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0x000000, 0.65)
+      .setOrigin(0)
+      .setDepth(210);
 
-  onResize({width,height}){
+    const label = this.add.text(BASE_WIDTH / 2, BASE_HEIGHT * 0.38, "Take a short break", {
+      fontFamily: "system-ui",
+      fontSize: "48px",
+      fontStyle: "bold",
+      color: this.colors.textSoft
+    }).setOrigin(0.5).setDepth(220);
+
+    const bigText = this.add.text(BASE_WIDTH / 2, BASE_HEIGHT * 0.48, "3", {
+      fontFamily: "system-ui",
+      fontSize: "160px",
+      fontStyle: "900",
+      color: this.colors.textMain,
+      stroke: "#14e6ff",
+      strokeThickness: 4
+    }).setOrigin(0.5).setDepth(220);
+
+    for (let n = gameOptions.breakCountdownSeconds; n >= 1; n--) {
+      bigText.setText(`${n}`);
+      bigText.setScale(0.75);
+      bigText.setAlpha(0.2);
+
+      this.tweens.add({
+        targets: bigText,
+        scale: 1.1,
+        alpha: 1,
+        duration: 220,
+        ease: "Back.Out"
+      });
+
+      this._haptic(20);
+      await new Promise(res => this.time.delayedCall(1000, res));
+    }
+
+    bigText.setText("Go!");
+    bigText.setScale(0.8);
+    this.tweens.add({
+      targets: bigText,
+      scale: 1.1,
+      alpha: 1,
+      duration: 180,
+      ease: "Back.Out"
+    });
+
+    await new Promise(res => this.time.delayedCall(350, res));
+
+    dim.destroy();
+    label.destroy();
+    bigText.destroy();
+
+    this.pendingCountdown = false;
+    this.nextNumber();
+  }
+
+  // ------- UI helpers -------
+  updateScoreText() { this.scoreText.setText(`Score: ${this.score}\nBest: ${this.topScore}`); }
+
+  onResize({ width, height }) {
     const cam = this.cameras.main;
     const scaleX = width / BASE_WIDTH, scaleY = height / BASE_HEIGHT;
     const scale = Math.min(scaleX, scaleY); cam.setZoom(scale);
-    const offsetX = (width - BASE_WIDTH*scale)*0.5/scale;
-    const offsetY = (height - BASE_HEIGHT*scale)*0.5/scale;
+    const offsetX = (width - BASE_WIDTH * scale) * 0.5 / scale;
+    const offsetY = (height - BASE_HEIGHT * scale) * 0.5 / scale;
     cam.setScroll(-offsetX, -offsetY);
   }
 
   // ---- Hover tween helpers ----
-    _startHover(btn) {
+  _startHover(btn) {
     if (btn.hoverTween && btn.hoverTween.isPlaying()) return; // already pulsing
     // kill any past tweens on this target just in case
     this.tweens.killTweensOf(btn);
 
     btn.hoverTween = this.tweens.add({
-        targets: btn,
-        scale: 1.02,
-        duration: 140,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut"
+      targets: btn,
+      scale: 1.02,
+      duration: 140,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut"
     });
-    }
+  }
 
-    _stopHover(btn) {
+  _stopHover(btn) {
     if (btn.hoverTween) {
-        btn.hoverTween.stop();
-        btn.hoverTween.remove(); // fully detach from TweenManager
-        btn.hoverTween = null;
+      btn.hoverTween.stop();
+      btn.hoverTween.remove(); // fully detach from TweenManager
+      btn.hoverTween = null;
     }
     btn.setScale(1);
-    }
+  }
 
-    setButtonsInteractive(enabled) {
+  setButtonsInteractive(enabled) {
     this.buttons?.forEach((b) => {
-        if (!b?.hit) return;
-        if (!enabled) {
+      if (!b?.hit) return;
+      if (!enabled) {
         // kill hover + reset visuals when disabling
         this._stopHover(b);
         b.bg.setTexture("btn-normal").clearTint();
         b.txt.setAlpha(1);
-        }
-        enabled ? b.hit.setInteractive({ useHandCursor: true }) : b.hit.disableInteractive();
+      }
+      enabled ? b.hit.setInteractive({ useHandCursor: true }) : b.hit.disableInteractive();
     });
-    }
+  }
 
 
-  _getFloatText(x,y,text){
+  _getFloatText(x, y, text) {
     let t = this.floatPool.getFirstDead();
-    if (!t){
-      t = this.add.text(x,y,text,{ fontFamily:"system-ui, -apple-system, Segoe UI, Roboto", fontSize:"42px", fontStyle:"bold", color:this.colors.points })
+    if (!t) {
+      t = this.add.text(x, y, text, { fontFamily: "system-ui, -apple-system, Segoe UI, Roboto", fontSize: "42px", fontStyle: "bold", color: this.colors.points })
         .setOrigin(0.5).setDepth(20);
       this.floatPool.add(t);
     } else {
-      t.setText(text).setPosition(x,y).setStyle({ color:this.colors.points }); t.setAlpha(1); t.active=true; t.visible=true;
+      t.setText(text).setPosition(x, y).setStyle({ color: this.colors.points }); t.setAlpha(1); t.active = true; t.visible = true;
     }
     return t;
   }
-  _recycleFloatText(t){ t.active=false; t.visible=false; }
-  _haptic(ms=20){ if (navigator?.vibrate) navigator.vibrate(ms); }
+  _recycleFloatText(t) { t.active = false; t.visible = false; }
+  _haptic(ms = 20) { if (navigator?.vibrate) navigator.vibrate(ms); }
+
+  getQuestionLength(score = this.score) {
+    if (score < 1000) return 1;
+    if (score < 2000) return 2;
+    if (score < 3000) return 3;
+    return 4;
+  }
+
+  shouldTriggerBreak(previousScore, newScore) {
+    const every = gameOptions.breakEveryScore || 1000;
+    if (every <= 0) return false;
+
+    const prevMark = Math.floor(previousScore / every);
+    const newMark = Math.floor(newScore / every);
+
+    // only break when we actually cross into a new 1000 block
+    return newMark > prevMark;
+  }
 }

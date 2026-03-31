@@ -39,16 +39,15 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     // Viewport area for rows (TOP-ALIGNED)
     const listW = this.panel.width - 60;
     const listH = this.panel.height - 140;
-    const listTopY = this.panel.y - this.panel.height / 2 + 70; // below title
+    const listTopY = this.panel.y - this.panel.height / 2 + 70;
+
     this.listContainer = scene.add.container(this.panel.x, listTopY).setSize(listW, listH);
-    // Hit area from top-left of the listContainer
     this.listContainer.setInteractive(
       new Phaser.Geom.Rectangle(-listW / 2, 0, listW, listH),
       Phaser.Geom.Rectangle.Contains
     );
     this.listContainer.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
 
-    // Close button
     this.closeBtn = scene.add
       .text(
         this.panel.x + this.panel.width / 2 - 24,
@@ -61,7 +60,6 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.closeBtn.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
     this.closeBtn.on("pointerup", (pointer, x, y, event) => { event?.stopPropagation(); this.hide(); });
 
-    // Paging
     this.pageInfo = scene.add
       .text(this.panel.x, this.panel.y + this.panel.height / 2 - 30, "", {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
@@ -78,6 +76,7 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
+
     this.nextBtn = scene.add
       .text(this.panel.x + 120, this.pageInfo.y, "Next", {
         fontFamily: "system-ui",
@@ -89,10 +88,9 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
 
     this.prevBtn.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
     this.nextBtn.on("pointerdown", (pointer, x, y, event) => event?.stopPropagation());
-    this.prevBtn.on("pointerup",   (pointer, x, y, event) => { event?.stopPropagation(); this._loadPage(-1); });
-    this.nextBtn.on("pointerup",   (pointer, x, y, event) => { event?.stopPropagation(); this._loadPage(1);  });
+    this.prevBtn.on("pointerup", (pointer, x, y, event) => { event?.stopPropagation(); this._loadPage(-1); });
+    this.nextBtn.on("pointerup", (pointer, x, y, event) => { event?.stopPropagation(); this._loadPage(1); });
 
-    // Add children
     this.add(this.dim);
     this.add(this.panel);
     this.add(this.title);
@@ -102,8 +100,6 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.add(this.pageInfo);
     this.add(this.closeBtn);
 
-    // Paging state
-    this.pageSize = 50;
     this.pages = [];
     this.pageIndex = 0;
     this.lastDocForPage = [];
@@ -112,17 +108,15 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.alpha = 0;
     this._isLoading = false;
 
-    // ---- Row layout metrics (controls spacing) ----
     this.metrics = {
-      pillH: 56,          // pixel height of each neon chip
-      rowSpacing: 10,     // vertical space BETWEEN chips
-      padX: 12,           // inner horizontal padding
-      nameX: 74,          // where name starts (after rank)
-      scoreRightPad: 14   // right edge padding for score
+      pillH: 56,
+      rowSpacing: 10,
+      padX: 12,
+      nameX: 74,
+      scoreRightPad: 14
     };
     this.metrics.step = this.metrics.pillH + this.metrics.rowSpacing;
 
-    // Colors
     this.colors = {
       chipFill: 0x0f2235,
       chipStroke: 0x14e6ff,
@@ -131,6 +125,10 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       rank: "#7afcff",
       score: "#39ffb0"
     };
+  }
+
+  _getVisibleRowCount() {
+    return Math.max(1, Math.floor(this.listContainer.height / this.metrics.step));
   }
 
   async show() {
@@ -165,8 +163,12 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this._isLoading = true;
 
     try {
+      const pageSize = this._getVisibleRowCount();
+
       if (forceFirst) {
-        const snap = await loadTop(this.pageSize, null);
+        this.pages = [];
+        this.lastDocForPage = [];
+        const snap = await loadTop(pageSize, null);
         this.pages[0] = snap;
         this.pageIndex = 0;
         this.lastDocForPage[0] = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
@@ -191,7 +193,7 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       const startAfterDoc = this.lastDocForPage[this.pageIndex];
       if (!startAfterDoc) return;
 
-      const snap = await loadTop(this.pageSize, startAfterDoc);
+      const snap = await loadTop(pageSize, startAfterDoc);
       this.pages[targetIndex] = snap;
       this.lastDocForPage[targetIndex] = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
       this.pageIndex = targetIndex;
@@ -205,25 +207,17 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
     this.listContainer.removeAll(true);
 
     const { pillH, step, padX, nameX, scoreRightPad } = this.metrics;
-    const rows = Math.min(snap.size, this.pageSize);
+    const rows = snap?.docs?.length || 0;
+    const startY = pillH / 2;
 
-    // how many full rows fit in the viewport, respecting spacing
-    const maxVisible = Math.max(0, Math.floor(this.listContainer.height / step));
-    const shown = Math.min(rows, maxVisible);
-
-    const startY = pillH / 2; // top-aligned: first row center is half pill high from top
-
-    for (let i = 0; i < shown; i++) {
+    for (let i = 0; i < rows; i++) {
       const d = snap.docs[i];
       const data = d.data();
-      const rank = this.pageIndex * this.pageSize + i + 1;
-
+      const rank = this.pageIndex * this._getVisibleRowCount() + i + 1;
       const rowY = startY + i * step;
 
-      // Row container anchored to top-left of the list viewport
       const row = this.scene.add.container(-this.listContainer.width / 2, rowY);
 
-      // Neon pill background
       const g = this.scene.add.graphics();
       g.lineStyle(2, this.colors.chipStroke, this.colors.chipStrokeAlpha);
       g.fillStyle(this.colors.chipFill, 0.9);
@@ -231,7 +225,6 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
       g.fillRoundedRect(0, -pillH / 2, pillW, pillH, 12);
       g.strokeRoundedRect(0, -pillH / 2, pillW, pillH, 12);
 
-      // Rank (left)
       const rankText = this.scene.add.text(padX, 0, `${rank}.`, {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
         fontSize: "24px",
@@ -239,7 +232,6 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
         color: this.colors.rank
       }).setOrigin(0, 0.5);
 
-      // Name (middle, bigger)
       const nameText = this.scene.add.text(nameX, 0, `${data.gamerTag || "Player"}`, {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
         fontSize: "26px",
@@ -247,7 +239,6 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
         color: this.colors.name
       }).setOrigin(0, 0.5);
 
-      // Score (right)
       const scoreText = this.scene.add.text(pillW - scoreRightPad, 0, `${data.score}`, {
         fontFamily: "system-ui, -apple-system, Segoe UI, Roboto",
         fontSize: "26px",
@@ -261,11 +252,10 @@ export default class LeaderboardOverlay extends Phaser.GameObjects.Container {
 
     this.pageInfo.setText(`Page ${this.pageIndex + 1}`);
     this.prevBtn.setAlpha(this.pageIndex > 0 ? 1 : 0.35);
-    this.nextBtn.setAlpha(snap.size === this.pageSize ? 1 : 0.35);
+    this.nextBtn.setAlpha(rows > 0 && rows === this._getVisibleRowCount() ? 1 : 0.35);
   }
 
   refreshCurrent() {
-        // simplest: reload page 1 (fresh snapshot + spacing stays correct)
-        this._loadPage(0, true);
-    }
+    this._loadPage(0, true);
+  }
 }
