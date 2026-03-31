@@ -29,14 +29,6 @@ exports.startRun = functions.https.onCall(async (data, context) => {
 });
 
 // submitScore: validates run + time + caps, updates leaderboard best
-function cleanGamerTag(tag) {
-  return String(tag || "Player").trim().replace(/\s+/g, " ").slice(0, 24);
-}
-
-function normalizeGamerTag(tag) {
-  return cleanGamerTag(tag).toLowerCase();
-}
-
 exports.submitScore = functions.https.onCall(async (data, context) => {
   const uid = context.auth?.uid;
   if (!uid) throw new functions.https.HttpsError("unauthenticated", "Sign-in required.");
@@ -63,34 +55,30 @@ exports.submitScore = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Run duration out of bounds.");
   }
 
+  // Sanity cap: points cannot exceed a generous rate
   const maxAllowed = Math.ceil((elapsedMs / 1000) * MAX_POINTS_PER_SECOND);
   if (score > maxAllowed) {
     throw new functions.https.HttpsError("failed-precondition", "Score exceeds allowed rate.");
   }
 
+  // Mark run as used (idempotency)
   await runRef.update({ used: true, finishedAt: now, finalScore: score });
 
-  const cleanTag = cleanGamerTag(gamerTag);
-  const tagKey = normalizeGamerTag(cleanTag);
-  const lbRef = db.collection("leaderboard").doc(tagKey);
-
+  // Upsert leaderboard best (server-side timestamp)
+  const lbRef = db.collection("leaderboard").doc(uid);
   await db.runTransaction(async (tx) => {
     const lbDoc = await tx.get(lbRef);
-    const prev = lbDoc.exists ? lbDoc.data() : null;
-
-    const best = Math.max(prev?.score || 0, score);
-    const nowMs = now.toMillis();
-    const sortKey = best * 1e10 + nowMs;
-
-    tx.set(lbRef, {
-      ownerUid: uid,
-      gamerTag: cleanTag,
-      gamerTagKey: tagKey,
-      score: best,
-      updatedAt: now,
-      updatedAtMillis: nowMs,
-      sortKey
-    }, { merge: true });
+    if (!lbDoc.exists || (lbDoc.exists && score > (lbDoc.data().score || 0))) {
+      tx.set(lbRef, {
+        uid,
+        gamerTag: gamerTag.trim(),
+        score,
+        updatedAt: now
+      }, { merge: true });
+    } else {
+      // Always keep gamerTag fresh
+      tx.set(lbRef, { gamerTag: gamerTag.trim(), updatedAt: now }, { merge: true });
+    }
   });
 
   return { ok: true };

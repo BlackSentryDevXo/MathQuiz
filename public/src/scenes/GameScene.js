@@ -1,6 +1,6 @@
 import { gameOptions, BASE_WIDTH, BASE_HEIGHT } from "../config.js";
-import { ready, saveBestScore, getMyRank, updateGamerTag } from "../services/firebase.js";
 import LeaderboardOverlay from "../ui/LeaderboardOverlay.js";
+import { ready, saveBestScore, getMyRank, updateGamerTag } from "../services/firebase.js";
 
 export default class GameScene extends Phaser.Scene {
   constructor() { super("Game"); }
@@ -349,8 +349,11 @@ export default class GameScene extends Phaser.Scene {
       this.gamerTag = firstTag; localStorage.setItem("gamerTag", firstTag);
     }
 
-    try { await saveBestScore(this.score, this.gamerTag || "Player"); }
-    catch (e) { console.warn("saveBestScore failed", e); }
+    try {
+      await saveBestScore(this.score, this.gamerTag || "Player");
+    } catch (e) {
+      console.warn("saveBestScore failed", e);
+    }
 
     this.refreshMyRank(true);
     this._showTapToStart();
@@ -440,6 +443,7 @@ export default class GameScene extends Phaser.Scene {
     this.correctAnswers = 0;
     this.lastBreakScore = 0;
     this.pendingCountdown = false;
+
     this.nextNumber();
   }
 

@@ -8,11 +8,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, serverTimestamp,
-  query, orderBy, limit, startAfter, getDocs, where, getCountFromServer,
-  deleteDoc, runTransaction
+  query, orderBy, limit, startAfter, getDocs, where, getCountFromServer
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Your real config
+// ⬇️ Your real config
 const firebaseConfig = {
   apiKey: "AIzaSyAg_aoWodRLuBLOM3CRZKNsC2K5KND8wDo",
   authDomain: "math-brain-6a4ba.firebaseapp.com",
@@ -32,7 +31,7 @@ const db = getFirestore(app);
 let _resolve, _reject;
 const ready = new Promise((res, rej) => { _resolve = res; _reject = rej; });
 
-setPersistence(auth, browserLocalPersistence).catch(() => { });
+setPersistence(auth, browserLocalPersistence).catch(()=>{});
 
 onAuthStateChanged(
   auth,
@@ -62,37 +61,26 @@ async function saveBestScore(score, gamerTag) {
   await ready;
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not signed in");
+  const ref = doc(db, "leaderboard", uid);
 
-  const cleanTag = cleanGamerTag(gamerTag);
-  const tagKey = normalizeGamerTag(cleanTag);
-  const lbRef = doc(db, "leaderboard", tagKey);
+  const snap = await getDoc(ref);
+  const prev = snap.exists() ? snap.data() : null;
 
-  await runTransaction(db, async (tx) => {
-    const lbDoc = await tx.get(lbRef);
-    const prev = lbDoc.exists() ? lbDoc.data() : null;
-
-    const best = Math.max(prev?.score || 0, Math.max(0, Math.floor(score)));
+  const best = Math.max(0, Math.floor(score));
+  if (!prev || best > (prev.score || 0)) {
     const nowMs = Date.now();
+    // Encodes tie-break (newer > older) into a single comparable field
     const sortKey = best * 1e10 + nowMs;
 
-    tx.set(lbRef, {
-      ownerUid: uid,
-      gamerTag: cleanTag,
-      gamerTagKey: tagKey,
+    await setDoc(ref, {
+      uid,
+      gamerTag: (gamerTag || "Player").slice(0, 24),
       score: best,
-      updatedAt: serverTimestamp(),
-      updatedAtMillis: nowMs,
+      updatedAt: serverTimestamp(),   // display
+      updatedAtMillis: nowMs,         // for sortKey derivation
       sortKey
     }, { merge: true });
-  });
-}
-
-function cleanGamerTag(tag) {
-  return String(tag || "Player").trim().replace(/\s+/g, " ").slice(0, 24);
-}
-
-function normalizeGamerTag(tag) {
-  return cleanGamerTag(tag).toLowerCase();
+  }
 }
 
 // ------- Rank helpers (single-field count on sortKey) -------
@@ -100,23 +88,8 @@ async function getMyLeaderboardDoc() {
   await ready;
   const uid = auth.currentUser?.uid;
   if (!uid) return null;
-
-  const byUid = await getDocs(query(
-    collection(db, "leaderboard"),
-    where("ownerUid", "==", uid),
-    limit(1)
-  ));
-
-  if (!byUid.empty) {
-    const d = byUid.docs[0];
-    return { id: d.id, ...d.data() };
-  }
-
-  const localTag = localStorage.getItem("gamerTag");
-  if (!localTag) return null;
-
-  const tagKey = normalizeGamerTag(localTag);
-  const snap = await getDoc(doc(db, "leaderboard", tagKey));
+  const ref = doc(db, "leaderboard", uid);
+  const snap = await getDoc(ref);
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
@@ -136,43 +109,12 @@ async function updateGamerTag(newTag) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not signed in");
 
-  const clean = cleanGamerTag(newTag);
-  const newKey = normalizeGamerTag(clean);
+  // Only update the gamerTag field; leave updatedAt/score untouched
+  const ref = doc(db, "leaderboard", uid);
+  const clean = String(newTag).trim().slice(0, 24);
   if (!clean) return;
 
-  const current = await getMyLeaderboardDoc();
-  const newRef = doc(db, "leaderboard", newKey);
-
-  if (!current) {
-    await setDoc(newRef, {
-      ownerUid: uid,
-      gamerTag: clean,
-      gamerTagKey: newKey,
-      score: 0,
-      updatedAt: serverTimestamp(),
-      updatedAtMillis: Date.now(),
-      sortKey: 0
-    }, { merge: true });
-    return;
-  }
-
-  const best = Math.max(0, current.score || 0);
-  const nowMs = Date.now();
-  const sortKey = best * 1e10 + nowMs;
-
-  await setDoc(newRef, {
-    ownerUid: uid,
-    gamerTag: clean,
-    gamerTagKey: newKey,
-    score: best,
-    updatedAt: serverTimestamp(),
-    updatedAtMillis: nowMs,
-    sortKey
-  }, { merge: true });
-
-  if (current.id && current.id !== newKey) {
-    await deleteDoc(doc(db, "leaderboard", current.id));
-  }
+  await setDoc(ref, { gamerTag: clean }, { merge: true });
 }
 
 export {
